@@ -47,9 +47,9 @@ double integrate(double x[3], double y[3], double (*f) (double, double))
 // Decommenter la ligne pour dessiner aussi les points d'integration
 //
 
-    //glfemSetColor(GLFEM_BLACK); glfemDrawElement( double x , double y , 3);
-    //glfemSetColor(GLFEM_BLUE);  glfemDrawNodes(double x , double y ,3);
-    //glfemSetColor(GLFEM_RED);   glfemDrawNodes(double xLoc, double yLoc,3);
+    glfemSetColor(GLFEM_BLACK); glfemDrawElement( x , y , 3);
+    glfemSetColor(GLFEM_BLUE);  glfemDrawNodes( x , y ,3);
+    glfemSetColor(GLFEM_RED);   glfemDrawNodes(&xLoc, &yLoc,3);
 
 
 
