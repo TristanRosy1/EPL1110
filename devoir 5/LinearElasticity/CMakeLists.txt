@@ -39,8 +39,8 @@ if(APPLE)
 endif(APPLE)
 
 if(UNIX AND NOT APPLE)
-    set(GMSH_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/gmsh/${GMSH_VERSION}.${GMSH_MINOR}-Linux64-sdk/include)
-    set(GMSH_LIBRARY ${CMAKE_SOURCE_DIR}/gmsh/${GMSH_VERSION}.${GMSH_MINOR}-Linux64-sdk/lib/libgmsh.so)
+    set(GMSH_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/gmsh/include)
+    set(GMSH_LIBRARY ${CMAKE_SOURCE_DIR}/gmsh/lib/libgmsh.so)
 endif(UNIX AND NOT APPLE)
 
 message("GMSH_INCLUDE_DIR : ${GMSH_INCLUDE_DIR}")
