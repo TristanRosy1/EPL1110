@@ -1,3 +1,0 @@
-C:/Users/trist/CLionProjects/EPL1110/cmake-build-debug/CMakeFiles/EPL1110.dir
-C:/Users/trist/CLionProjects/EPL1110/cmake-build-debug/CMakeFiles/edit_cache.dir
-C:/Users/trist/CLionProjects/EPL1110/cmake-build-debug/CMakeFiles/rebuild_cache.dir
