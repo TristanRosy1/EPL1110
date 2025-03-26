@@ -8,35 +8,48 @@ double geoSize(double x, double y){
     femGeo* theGeometry = geoGetGeometry();
     
     double h = theGeometry->h;
-    double x0 = theGeometry->xNotch;
-    double y0 = theGeometry->yNotch;
-    double r0 = theGeometry->rNotch;
-    double h0 = theGeometry->hNotch;
-    double d0 = theGeometry->dNotch;
-  
-    
-    double x1 = theGeometry->xHole;
-    double y1 = theGeometry->yHole;
-    double r1 = theGeometry->rHole;
-    double h1 = theGeometry->hHole;
-    double d1 = theGeometry->dHole;
-      
-    double hfinal = h;
-    double d = sqrt((x-x0)*(x-x0) + (y-y0)*(y-y0)) - r0;
-    if (d < d0) {
-        double a = (-2*h + 2*h0)/(d0*d0*d0);
-        double b = (3*h  - 3*h0)/(d0*d0);
-        double c = 0;
-        hfinal = a*d*d*d + b*d*d + c*d + h0; }
-        
-    d = sqrt((x-x1)*(x-x1) + (y-y1)*(y-y1)) - r1;
-    if (d < d1) {
-        double a = (-2*h + 2*h1)/(d1*d1*d1);
-        double b = (3*h  - 3*h1)/(d1*d1);
-        double c = 0;
-        hfinal = fmin(hfinal,a*d*d*d + b*d*d + c*d + h1); }
+    double x0 = theGeometry->xCenter;
+    double y0 = theGeometry->yCenter;
 
-    //hfinal = 0.1;
+    double rInner = theGeometry->rInner;
+    double dInner = theGeometry->dInner;
+    double hInner = theGeometry->hInner;
+
+    double rOuter = theGeometry->rOuter;
+    double dOuter = theGeometry->dOuter;
+    double hOuter = theGeometry->hOuter;
+
+    double hfinal = h;
+
+    // Distance de la frontière interne (influence de la pression interne)
+    double d = sqrt((x-x0)*(x-x0) + (y-y0)*(y-y0)) - rInner;
+    if (d < dInner) {
+        double a = (-2*h + 2*hInner)/(dInner*dInner*dInner);
+        double b = (3*h  - 3*hInner)/(dInner*dInner);
+        double c = 0;
+        hfinal = a*d*d*d + b*d*d + c*d + hInner; 
+    }
+
+    double tempX = x*x*x*x;
+
+    if (y < 0){
+        // Distance du point de contact de la réaction du sol (frontière externe)
+        d = sqrt((tempX-x0)*(tempX-x0) + (y+rOuter)*(y+rOuter));
+        if (d < dOuter) {
+            double a = (-2*h + 2*hOuter)/(dOuter*dOuter*dOuter);
+            double b = (3*h  - 3*hOuter)/(dOuter*dOuter);
+            double c = 0;
+            hfinal = fmin(hfinal,a*d*d*d + b*d*d + c*d + hOuter); }
+    } else {
+        // Distance du point de contact du poids de la voiture (frontière externe)
+        d = sqrt((tempX-x0)*(tempX-x0) + (y-rOuter)*(y-rOuter));
+        if (d < dOuter) {
+            double a = (-2*h + 2*hOuter)/(dOuter*dOuter*dOuter);
+            double b = (3*h  - 3*hOuter)/(dOuter*dOuter);
+            double c = 0;
+            hfinal = fmin(hfinal,a*d*d*d + b*d*d + c*d + hOuter); }
+    }
+
     return hfinal;
 
 }
@@ -45,18 +58,12 @@ double geoSize(double x, double y){
 void geoMeshGenerate() {
 
     femGeo* theGeometry = geoGetGeometry();
-
-    double w = theGeometry->LxPlate;
-    double h = theGeometry->LyPlate;
      
-    double x0 = theGeometry->xNotch;
-    double y0 = theGeometry->yNotch;
-    double r0 = theGeometry->rNotch;
+    double x = theGeometry->xCenter;
+    double y = theGeometry->yCenter;
     
-    
-    double x1 = theGeometry->xHole;
-    double y1 = theGeometry->yHole;
-    double r1 = theGeometry->rHole;
+    double rInner = theGeometry->rInner;
+    double rOuter = theGeometry->rOuter;
  
 //
 //  -1- Construction de la géométrie avec OpenCascade
@@ -66,15 +73,12 @@ void geoMeshGenerate() {
 //
  
     int ierr;
-    int idPlate = gmshModelOccAddRectangle(-w/2.0,-h/2.0,0.0,w,h,-1,0.0,&ierr); 
-    int idNotch = gmshModelOccAddDisk(x0,y0,0.0,r0,r0,-1,NULL,0,NULL,0,&ierr); 
-    int idHole  = gmshModelOccAddDisk(x1,y1,0.0,r1,r1,-1,NULL,0,NULL,0,&ierr); 
+    int idInner = gmshModelOccAddDisk(x,y,0.0,rInner,rInner,-1,NULL,0,NULL,0,&ierr); 
+    int idOuter = gmshModelOccAddDisk(x,y,0.0,rOuter,rOuter,-1,NULL,0,NULL,0,&ierr); 
     
-    int plate[] = {2,idPlate};
-    int notch[] = {2,idNotch};
-    int hole[]  = {2,idHole};
-    gmshModelOccCut(plate,2,notch,2,NULL,NULL,NULL,NULL,NULL,-1,1,1,&ierr); 
-    gmshModelOccCut(plate,2,hole ,2,NULL,NULL,NULL,NULL,NULL,-1,1,1,&ierr); 
+    int inner[] = {2,idInner};
+    int outer[] = {2,idOuter};
+    gmshModelOccCut(outer,2,inner ,2,NULL,NULL,NULL,NULL,NULL,-1,1,1,&ierr); 
  
 //
 //  -2- Définition de la fonction callback pour la taille de référence

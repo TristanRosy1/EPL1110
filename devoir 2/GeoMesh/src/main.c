@@ -1,7 +1,7 @@
 /*
  *  main.c
  *  Library for EPL1110 : Finite Elements for dummies
- *  Utilisation de l'API de GMSH pour créer un maillage
+ *  Utilisation de l'API de GMSH pour crï¿½er un maillage
  *
  *  Copyright (C) 2023 UCL-IMMC : Vincent Legat
  *  All rights reserved.
@@ -20,41 +20,30 @@ int main(void)
 
 
  
-    double Lx = 1.0;
-    double Ly = 2.0;
+    double rInner = 1.0;
+    double rOuter = 1.2;
       
     int ierr;
     
     geoInitialize();
     femGeo* theGeometry = geoGetGeometry();
     
-    theGeometry->LxPlate =  Lx;
-    theGeometry->LyPlate =  Ly;
-    theGeometry->xPlate  =  0.0;
-    theGeometry->yPlate  =  0.0;
-    theGeometry->xHole   =  Lx / 4.0;
-    theGeometry->yHole   =  Ly / 4.0;
-    theGeometry->rHole   =  Lx / 8.0;
-    theGeometry->xNotch  = -Lx / 2.0;
-    theGeometry->yNotch  = -Ly / 2.0;
-    theGeometry->rNotch  =  Lx / 2.0;
-    
-    theGeometry->h       =  Lx * 0.1;    // 0.1 c'est plus joli :-)
-    theGeometry->hHole   =  theGeometry->h * 0.2;
-    theGeometry->hNotch  =  theGeometry->h * 0.05;
-    theGeometry->dHole   =  theGeometry->h * 1.0;
-    theGeometry->dNotch  =  theGeometry->h * 4.0;
+    theGeometry->xCenter = 0.0;
+    theGeometry->yCenter = 0.0;
+    theGeometry->rInner  = rInner;
+    theGeometry->rOuter  = rOuter;
+    theGeometry->dInner  = rOuter - rInner;
+    theGeometry->dOuter  = 0.66*rInner;
+    theGeometry->hInner  = 0.02;
+    theGeometry->hOuter  = 0.02;
+    theGeometry->h       = 0.15;
 
    
     geoMeshGenerate();
     geoMeshImport();
     
-    geoSetDomainName(0,"Outer Disk");
-    geoSetDomainName(1,"Bottom");
-    geoSetDomainName(2,"Left");
-    geoSetDomainName(3,"Right");
-    geoSetDomainName(4,"Top");
-    geoSetDomainName(5,"Inner Disk");
+    geoSetDomainName(0,"Inner Disk");
+    geoSetDomainName(1,"Outer Disk");
     
 
 //
@@ -65,7 +54,7 @@ int main(void)
     geoMeshWrite(filename);
 
 //
-//  -3- Champ de la taille de référence du maillage
+//  -3- Champ de la taille de rï¿½fï¿½rence du maillage
 //
 
     double *meshSizeField = malloc(theGeometry->theNodes->nNodes*sizeof(double));
@@ -101,7 +90,7 @@ int main(void)
         glfemReshapeWindows(theGeometry->theNodes,w,h);
 
         t = glfwGetTime();  
-    //    glfemChangeState(&mode, theMeshes->nMesh);
+        //glfemChangeState(&mode, theMeshes->nMesh);
         if (glfwGetKey(window,'D') == GLFW_PRESS) { mode = 0;}
         if (glfwGetKey(window,'V') == GLFW_PRESS) { mode = 1;}
         if (glfwGetKey(window,'N') == GLFW_PRESS && freezingButton == FALSE) { domain++; freezingButton = TRUE; told = t;}
