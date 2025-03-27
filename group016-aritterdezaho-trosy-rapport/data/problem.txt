@@ -1,0 +1,27 @@
+Analyse Axisymétrique d’une chambre à air : Modélisation et Simulation
+
+1. Définition du Problème
+L’objectif de cette étude est de modéliser et analyser le comportement mécanique d’un pneu soumis à des charges internes et externes en utilisant une approche axisymétrique. L’image de maillage fournie illustre la discrétisation de la structure afin de réaliser une analyse par éléments finis.
+
+1.1. Hypothèses et Simplifications
+Hypothèse d’axisymétrie : Le pneu étant une structure de révolution, son analyse peut être réduite à une coupe axisymétrique en 2D.
+
+Matériau : Comportement élastique linéaire défini par :
+
+Module de Young 𝐸
+
+Coefficient de Poisson 𝜈
+
+Modélisation de la chambre à air : La géométrie est représentée sous forme d’un tore creux en coupe.
+
+2. Conditions aux Frontières
+
+2.1. Pression Interne
+Une pression uniforme 𝑃 appliquée sur les parois internes du pneu.
+
+Cette pression est convertie en forces normales sur les éléments de la paroi interne.
+
+2.2. Réaction du Sol
+Une force de contact 𝐹𝑦 est appliquée sur la zone inférieure du pneu simulant la réaction du sol.
+
+La condition d’appui empêche tout déplacement vertical 𝑢𝑦 = 0 dans la zone de contact.
