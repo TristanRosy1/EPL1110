@@ -24,8 +24,8 @@ int main(void)
     printf("    Y : Horizontal residuals for unconstrained equations \n");
     printf("    N : Next domain highlighted\n\n\n");
 
-    double rInner = 1.0;
-    double rOuter = 1.2;
+    double rInner = 1;
+    double rOuter = rInner + 0.2;
       
     geoInitialize();
     femGeo* theGeometry = geoGetGeometry();
@@ -53,21 +53,23 @@ int main(void)
 //  -2- Creation probleme 
 //
     
-    double E   = 1.e6;    // Module d'élasticité en Pa (1 MPa, variable selon le type de caoutchouc)
+    double masveh = 1000; // masse du vehicule en kg
+    double massurroue = masveh/4; // masse du vegicule reparti sur une roue
+    double E   = 5e6;    // Module d'élasticité en Pa (1 MPa, variable selon le type de caoutchouc)
     double nu  = 0.49;    // Coefficient de Poisson (proche de 0.5 pour un matériau quasi-incompressible)
     double rho = 1.1e3;   // Densité en kg/m³ (typiquement entre 900 et 1300 kg/m³) 
     double g   = 9.81;
     femProblem* theProblem = femElasticityCreate(theGeometry,E,nu,rho,g,PLANAR_STRAIN);
     // Poids de la voiture (force appliquée vers le bas)
-    double F_car = 10000.0; // Exemple : 10 kN
+    double F_car = g*massurroue; // Exemple : 10 kN
     // Réaction du sol (force appliquée vers le haut)
-    double F_reaction = 10000.0; // Exemple : 10 kN
+    double F_reaction = F_car; // Exemple : 10 kN
     // Pression interne de l'air
     double P_internal = 200000.0; // Exemple : 200 kPa (2 bars)
 
     // Conditions de Neumann
-    femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", NEUMANN_Y, -F_car/4); // Force vers le bas
-    femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", NEUMANN_Y, F_car/4); // Force vers le haut
+    femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", NEUMANN_Y, -F_car); // Force vers le bas
+    femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", NEUMANN_Y, F_reaction); // Force vers le haut
     femElasticityAddBoundaryCondition(theProblem, "InternalBoundary", NEUMANN_X, P_internal); // Pression interne (x)
     femElasticityAddBoundaryCondition(theProblem, "InternalBoundary", NEUMANN_Y, P_internal); // Pression interne (y)
 

@@ -20,7 +20,7 @@ double geoGmshSize(int dim, int tag, double x, double y, double z, double lc, vo
 void geoInitialize() 
 {
     int ierr;
-    theGeometry.geoSize = geoSizeDefault;
+    theGeometry.geoSize = geoSize;
     gmshInitialize(0,NULL,1,0,&ierr);                         ErrorGmsh(ierr);
     gmshModelAdd("MyGeometry",&ierr);                         ErrorGmsh(ierr);
     gmshModelMeshSetSizeCallback(geoGmshSize,NULL,&ierr);     ErrorGmsh(ierr);
