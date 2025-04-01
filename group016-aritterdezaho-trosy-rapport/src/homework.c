@@ -83,6 +83,17 @@ void femElasticityAssembleElements(femProblem *theProblem)
 
 void femElasticityAssembleNeumann(femProblem *theProblem)
 {
+    // Résumé de la fonction
+    // But : Intégrer les conditions de Neumann dans le vecteur des forces ( B ).
+    // Processus :
+    // 1: Parcourt toutes les conditions de frontières.
+    // 2: Ignore les conditions de Dirichlet (pas pertinentes ici).
+    // 3: Pour chaque condition de Neumann : 1) Parcourt les arêtes du domaine.
+    //                                       2)Calcule et intègre les contributions aux forces globales.
+    // Sortie : Mise à jour du vecteur ( B ), prêt pour la résolution du système global.
+
+
+
     femFullSystem  *theSystem   = theProblem->system;
     femIntegration *theRule     = theProblem->ruleEdge;
     femDiscrete    *theSpace    = theProblem->spaceEdge;
@@ -131,13 +142,13 @@ void femElasticityAssembleNeumann(femProblem *theProblem)
 
                 femDiscretePhi(theSpace, xsi, phi);
 
-                for (i = 0; i < theSpace->n; i++) { B[mapU[i]] += phi[i] * value * jac * weight; }
+                for (i = 0; i < theSpace->n; i++) { B[mapU[i]] += phi[i] * value * jac * weight; } //À la fin, toutes les contributions des conditions de Neumann sur chaque arête sont ajoutées au vecteur global ( B ) du système.
             }
         }
     }
 }
 
-double *femElasticitySolve(femProblem *theProblem)
+double *femElasticitySolve(femProblem *theProblem) //Assemble et résout le système d'équations global pour obtenir la solution (déplacements ou forces).
 {
     femFullSystem *system = theProblem->system;
     femFullSystemInit(system);
@@ -167,7 +178,7 @@ double *femElasticitySolve(femProblem *theProblem)
     int *constrainedNodes = theProblem->constrainedNodes;
     for (int node = 0; node < systemSize; node++) {
         if (constrainedNodes[node] != -1) {
-            double constraintValue = theProblem->conditions[constrainedNodes[node]]->value;
+            double constraintValue = theProblem->conditions[constrainedNodes[node]]->value; //contrainte de dirichlet sont applique ici 
             femFullSystemConstrain(system, node, constraintValue);
         }
     }
@@ -177,7 +188,7 @@ double *femElasticitySolve(femProblem *theProblem)
     return theProblem->soluce;
 }
 
-double *femElasticityForces(femProblem *theProblem)
+double *femElasticityForces(femProblem *theProblem) //calcule des residus, Elle calcule la différence entre les forces internes et externes après résolution. Cela permet de vérifier l'équilibre des forces dans le système et de détecter d'éventuelles erreurs ou instabilités.
 {
     double *residuals = theProblem->residuals;
     double *solution = theProblem->soluce;

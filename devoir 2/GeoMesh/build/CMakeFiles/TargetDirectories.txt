@@ -1,0 +1,9 @@
+/root/EPL1110/devoir 2/GeoMesh/build/CMakeFiles/myFem.dir
+/root/EPL1110/devoir 2/GeoMesh/build/CMakeFiles/run.dir
+/root/EPL1110/devoir 2/GeoMesh/build/CMakeFiles/edit_cache.dir
+/root/EPL1110/devoir 2/GeoMesh/build/CMakeFiles/rebuild_cache.dir
+/root/EPL1110/devoir 2/GeoMesh/build/glfw/CMakeFiles/edit_cache.dir
+/root/EPL1110/devoir 2/GeoMesh/build/glfw/CMakeFiles/rebuild_cache.dir
+/root/EPL1110/devoir 2/GeoMesh/build/glfw/src/CMakeFiles/glfw.dir
+/root/EPL1110/devoir 2/GeoMesh/build/glfw/src/CMakeFiles/edit_cache.dir
+/root/EPL1110/devoir 2/GeoMesh/build/glfw/src/CMakeFiles/rebuild_cache.dir

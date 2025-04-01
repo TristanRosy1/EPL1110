@@ -43,8 +43,13 @@ int main(void)
   
     geoMeshGenerate();
     geoMeshImport();
-    geoSetDomainName(0,"ExternalBoundary");
+    
+    
+    
+
+
     geoSetDomainName(1,"InternalBoundary");
+    geoSetDomainName(0,"ExternalBoundary");
 
     geoMeshWrite("../data/elasticity.txt");
     
@@ -53,7 +58,7 @@ int main(void)
 //  -2- Creation probleme 
 //
     
-    double masveh = 1000; // masse du vehicule en kg
+    double masveh = 10000; // masse du vehicule en kg
     double massurroue = masveh/4; // masse du vegicule reparti sur une roue
     double E   = 5e6;    // Module d'élasticité en Pa (1 MPa, variable selon le type de caoutchouc)
     double nu  = 0.49;    // Coefficient de Poisson (proche de 0.5 pour un matériau quasi-incompressible)
@@ -65,17 +70,46 @@ int main(void)
     // Réaction du sol (force appliquée vers le haut)
     double F_reaction = F_car; // Exemple : 10 kN
     // Pression interne de l'air
-    double P_internal = 200000.0; // Exemple : 200 kPa (2 bars)
+    double P_internal = 200000; // Exemple : 200 kPa (2 bars)
 
     // Conditions de Neumann
-    femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", NEUMANN_Y, -F_car); // Force vers le bas
-    femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", NEUMANN_Y, F_reaction); // Force vers le haut
-    femElasticityAddBoundaryCondition(theProblem, "InternalBoundary", NEUMANN_X, P_internal); // Pression interne (x)
+    femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", NEUMANN_Y, -F_car); // Force vers le bas aucune diff entre les 2 axes
+    femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", NEUMANN_Y, F_car); // Force vers le haut
+    femElasticityAddBoundaryCondition(theProblem, "InternalBoundary", NEUMANN_X, P_internal); // Pression interne (x) aucune diff entre les 2 axes
     femElasticityAddBoundaryCondition(theProblem, "InternalBoundary", NEUMANN_Y, P_internal); // Pression interne (y)
 
-    // Conditions de Dirichlet
-    femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", DIRICHLET_X, 0.0); // Bloque déplacement horizontal
-    femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", DIRICHLET_Y, 0.0); // Bloque déplacement vertical
+    for (int i = 0; i < theGeometry->theNodes->nNodes; i++) {
+        double x = theGeometry->theNodes->X[i];
+        double y = theGeometry->theNodes->Y[i];
+        double xCenter = theGeometry->xCenter;
+        double EPSILON = 1e-2; // Tolérance pour comparer
+    
+        // Si le nœud est à gauche du centre, impose un déplacement vers la gauche
+        if (x < xCenter - EPSILON) {
+            femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", DIRICHLET_X, -1e-2); // Déplacement vers la gauche
+        }
+    
+        // Si le nœud est à droite du centre, impose un déplacement vers la droite
+        if (x > xCenter + EPSILON) {
+            femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", DIRICHLET_X, 1e-2); // Déplacement vers la droite
+        }
+    
+        // Bloquer les déplacements verticaux sur l'axe vertical (x = xCenter)
+        if (fabs(x - xCenter) < EPSILON) {
+            femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", DIRICHLET_Y, 0.0);
+        }
+    }
+    //femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", DIRICHLET_X, 1e-2); // Bloque déplacement horizontal
+    //femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", DIRICHLET_Y, 0.0);
+    // Déplacement symétrique selon X à gauche et à droite du centre
+    //femElasticityAddBoundaryCondition(theProblem, "LeftBoundary", DIRICHLET_X, -1e-2);  // Vers la gauche
+    //femElasticityAddBoundaryCondition(theProblem, "RightBoundary", DIRICHLET_X, 1e-2);  // Vers la droite
+
+    // Bloquer les déplacements verticaux pour conserver la symétrie
+    //femElasticityAddBoundaryCondition(theProblem, "LeftBoundary", DIRICHLET_Y, 0.0); 
+    //femElasticityAddBoundaryCondition(theProblem, "RightBoundary", DIRICHLET_Y, 0.0);
+
+    // condition domaine interieur
     femElasticityAddBoundaryCondition(theProblem, "InternalBoundary", DIRICHLET_X, 0.0); // Bloque déplacement horizontal
     femElasticityAddBoundaryCondition(theProblem, "InternalBoundary", DIRICHLET_Y, 0.0); // Bloque déplacement vertical
     femElasticityPrint(theProblem);
@@ -98,14 +132,20 @@ int main(void)
     double *normDisplacement = malloc(theNodes->nNodes * sizeof(double));
     double *forcesX = malloc(theNodes->nNodes * sizeof(double));
     double *forcesY = malloc(theNodes->nNodes * sizeof(double));
+    double *normForces = malloc(theNodes->nNodes * sizeof(double));
     
     for (int i=0; i<theNodes->nNodes; i++){
-        theNodes->X[i] += theSoluce[2*i+0]*deformationFactor;
+        double fx = theForces[2*i+0];
+        double fy = theForces[2*i+1];
+
+        normForces[i] = sqrt(fx*fx + fy*fy);
+        theNodes->X[i] += theSoluce[2*i+0]*deformationFactor; //partie que j ai modif
         theNodes->Y[i] += theSoluce[2*i+1]*deformationFactor;
         normDisplacement[i] = sqrt(theSoluce[2*i+0]*theSoluce[2*i+0] + 
                                    theSoluce[2*i+1]*theSoluce[2*i+1]);
-        forcesX[i] = theForces[2*i+0];
-        forcesY[i] = theForces[2*i+1]; }
+        //forcesX[i] = theForces[2*i+0];
+        //forcesY[i] = theForces[2*i+1]; 
+        }
   
     double hMin = femMin(normDisplacement,theNodes->nNodes);  
     double hMax = femMax(normDisplacement,theNodes->nNodes);  
@@ -157,7 +197,7 @@ int main(void)
             sprintf(theMessage, "%s : %d ",theGeometry->theDomains[domain]->name,domain);
             glColor3f(1.0,0.0,0.0); glfemMessage(theMessage); }
         if (mode == 1) {
-            glfemPlotField(theGeometry->theElements,normDisplacement);
+            glfemPlotField(theGeometry->theElements,normForces);
             glfemPlotMesh(theGeometry->theElements); 
             sprintf(theMessage, "Number of elements : %d ",theGeometry->theElements->nElem);
             glColor3f(1.0,0.0,0.0); glfemMessage(theMessage); }
@@ -171,14 +211,22 @@ int main(void)
             glfemPlotMesh(theGeometry->theElements); 
             sprintf(theMessage, "Number of elements : %d ",theGeometry->theElements->nElem);
             glColor3f(1.0,0.0,0.0); glfemMessage(theMessage); }
+            
+        if (mode == 4) {  
+            // Calculer et afficher le champ normForces (si non déjà calculé hors boucle) (ca j ai rajouté)
+            glfemPlotField(theGeometry->theElements, normForces);
+            sprintf(theMessage, "Visualisation des efforts internes (norme) ");
+            glColor3f(1.0,0.0,0.0);
+            glfemMessage(theMessage); }
          glfwSwapBuffers(window);
          glfwPollEvents();
-    } while( glfwGetKey(window,GLFW_KEY_ESCAPE) != GLFW_PRESS &&
+         } while( glfwGetKey(window,GLFW_KEY_ESCAPE) != GLFW_PRESS &&
              glfwWindowShouldClose(window) != 1 );
             
     // Check if the ESC key was pressed or the window was closed
 
     free(normDisplacement);
+    free(normForces);
     free(forcesX);
     free(forcesY);
     femElasticityFree(theProblem) ; 
@@ -187,6 +235,6 @@ int main(void)
     
     exit(EXIT_SUCCESS);
     return 0;  
-}
+        }
 
 

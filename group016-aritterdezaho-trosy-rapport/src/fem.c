@@ -89,7 +89,7 @@ void geoMeshImport()
                                &node,&nNode,-1,0,1,&ierr);    ErrorGmsh(ierr);
     femMesh *theEdges = malloc(sizeof(femMesh));
     theEdges->nLocalNode = 2;
-    theEdges->nodes = theNodes;
+    theEdges->nodes = theNodes; 
     theEdges->nElem = nElem;  
     theEdges->elem = malloc(sizeof(int)*2*theEdges->nElem);
     for (int i = 0; i < theEdges->nElem; i++)
@@ -327,9 +327,26 @@ void geoSetDomainName(int iDomain, char *name)
     sprintf(theGeometry.theDomains[iDomain]->name,"%s",name);
 } 
 
-int geoGetDomain(char *name)
-{
+int geoGetDomain(char *name) {
     int theIndex = -1;
+
+
+    for (int iDomain = 0; iDomain < theGeometry.nDomains; iDomain++) {
+        femDomain *theDomain = theGeometry.theDomains[iDomain];
+        printf("Domaine défini [%d]: %s\n", iDomain, theDomain->name);
+
+        if (strncasecmp(name, theDomain->name, MAXNAME) == 0) {
+            theIndex = iDomain;
+            break; // Domaine trouvé, on peut sortir de la boucle
+        }
+    }
+
+    if (theIndex == -1) {
+        printf("Erreur : Domaine %s non trouvé !\n", name);
+    }
+
+    return theIndex;
+
     int nDomains = theGeometry.nDomains;
     for (int iDomain = 0; iDomain < nDomains; iDomain++) {
         femDomain *theDomain = theGeometry.theDomains[iDomain];
@@ -366,7 +383,7 @@ double geoSize(double x, double y){
         hfinal = a*d*d*d + b*d*d + c*d + hInner; 
     }
 
-    double tempX = x*x*x*x;
+    double tempX = fabs(x - x0);
 
     if (y < 0){
         // Distance du point de contact de la réaction du sol (frontière externe)
@@ -385,6 +402,7 @@ double geoSize(double x, double y){
             double c = 0;
             hfinal = fmin(hfinal,a*d*d*d + b*d*d + c*d + hOuter); }
     }
+    printf("X = %f, tempX = %f, Distance d = %f, hfinal = %f\n", x, tempX, d, hfinal);
 
     return hfinal;
 

@@ -1,0 +1,25 @@
+je separe le domaine pour que les conditions de dirichlet soit symetrique avec le centre; chanegement ligne 326 fem.c et ligne 46 et 91 dans le main
+
+
+a utiliser potentiellement: 
+
+// Automatisation de la détection des domaines
+printf("Nombre total de domaines : %d\n", theGeometry->nDomains);
+
+    for (int i = 0; i < theGeometry->nDomains; i++) {
+        char domainName[50];
+        if (theGeometry->xCenter < 0.0) {
+            sprintf(domainName, "LeftBoundary_%d", i);
+            geoSetDomainName(i, domainName);
+            printf("Domaine %d identifié comme %s\n", i, domainName);
+        } else {
+            sprintf(domainName, "RightBoundary_%d", i);
+            geoSetDomainName(i, domainName);
+            printf("Domaine %d identifié comme %s\n", i, domainName);
+        }
+    }
+
+
+    Commentaire, on a pas de fonction femElasticityAssembleDirichlet(femProblem *theProblem);
+    alors qu on a femElasticityAssembleNeumann(femProblem *theProblem);
+    
