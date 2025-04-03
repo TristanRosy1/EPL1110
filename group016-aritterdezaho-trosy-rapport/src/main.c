@@ -58,11 +58,11 @@ int main(void)
 //  -2- Creation probleme 
 //
     
-    double masveh = 10000; // masse du vehicule en kg
+    double masveh = 1200; // masse du vehicule en kg
     double massurroue = masveh/4; // masse du vegicule reparti sur une roue
-    double E   = 5e6;    // Module d'élasticité en Pa (1 MPa, variable selon le type de caoutchouc)
+    double E   = 2e6;    // Module d'élasticité en Pa (1 MPa, variable selon le type de caoutchouc)
     double nu  = 0.49;    // Coefficient de Poisson (proche de 0.5 pour un matériau quasi-incompressible)
-    double rho = 1.1e3;   // Densité en kg/m³ (typiquement entre 900 et 1300 kg/m³) 
+    double rho = 9.02e3;   // Densité en kg/m³ (typiquement entre 900 et 1300 kg/m³) 
     double g   = 9.81;
     femProblem* theProblem = femElasticityCreate(theGeometry,E,nu,rho,g,PLANAR_STRAIN);
     // Poids de la voiture (force appliquée vers le bas)
