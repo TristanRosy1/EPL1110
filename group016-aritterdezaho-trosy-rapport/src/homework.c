@@ -1,9 +1,124 @@
 #include "fem.h"
 
+double* VAL;
+
+
 // Strip : BEGIN
 double **A_copy = NULL;
 double *B_copy  = NULL;
 // Strip : END
+
+int compare(const void *a, const void *b) {
+    if (VAL[*(int*)a] < VAL[*(int*)b]) return 1;
+    if (VAL[*(int*)a] > VAL[*(int*)b]) return -1;
+    return 0;
+}
+
+void femMeshRenumber(femMesh *theMesh, femRenumType renumType)
+{
+    int i;
+    int *tab = malloc(sizeof(int) * theMesh->nodes->nNodes);
+
+    for (i = 0; i < theMesh->nodes->nNodes; i++) 
+        tab[i] = i;
+
+    switch (renumType) {
+        case FEM_NO :
+            break;
+        case FEM_XNUM : 
+            VAL = theMesh->nodes->X;
+            qsort(tab, theMesh->nodes->nNodes, sizeof(int), compare);
+            break;
+        case FEM_YNUM : 
+            VAL = theMesh->nodes->Y; 
+            qsort(tab, theMesh->nodes->nNodes, sizeof(int), compare);
+            break;            
+        default : Error("Unexpected renumbering option"); }
+    
+    for (i = 0; i < theMesh->nodes->nNodes; i++) {
+        theMesh->number[tab[i]] = i;
+    }
+    free(tab);
+}
+
+int femMeshComputeBand(femMesh *theMesh)
+{   
+    int iElem,j,myMax,myMin,myBand,map[4];
+    int nLocal = theMesh->nLocalNode;
+    myBand = 0;
+    for (iElem = 0; iElem < theMesh->nElem; iElem++) {
+        for (j=0; j < nLocal; ++j) 
+            map[j] = theMesh->number[theMesh->elem[iElem*nLocal+j]];
+        myMin = map[0];
+        myMax = map[0];
+        for (j=1; j < nLocal; j++) {
+            myMax = fmax(map[j],myMax);
+            myMin = fmin(map[j],myMin); }
+        if (myBand < (myMax - myMin)) myBand = myMax - myMin; 
+    }        
+    myBand *=2 ;
+    return(++myBand); // Pour chaque noeud, on a une composante U et une composante V
+}
+
+void conjugateGradient(double** A, double *b, double *x, int size) {
+    double *r = malloc(size*sizeof(double));
+    double *d = malloc(size*sizeof(double));
+    double *s = malloc(size*sizeof(double));
+    double alpha, beta, delta, deltaNew;
+    int nMax = 2000;
+
+    // Initialisation
+    for (int i = 0; i < size; i++) {
+        r[i] = b[i];
+        d[i] = r[i];
+        x[i] = 0.0;
+    }
+
+    delta = 0.0;
+    for (int i = 0; i < size; i++)
+        delta += r[i] * r[i];
+
+    int k = 0;
+    while (delta > 1e-8 & k < nMax) {  // Critère de convergence
+        // Calcul de s
+        for (int i = 0; i < size; i++) {
+            s[i] = 0.0;
+            for (int j = 0; j < size; j++)
+                s[i] += A[i][j] * d[j];
+        }
+
+        // Calcul de alpha
+        double sd = 0.0;
+        for (int i = 0; i < size; i++)
+            sd += d[i] * s[i];
+
+        alpha = delta / sd;
+
+        // Mise à jour de x et r
+        for (int i = 0; i < size; i++) {
+            x[i] += alpha * d[i];
+            r[i] -= alpha * s[i];
+        }
+
+        deltaNew = 0.0;
+        for (int i = 0; i < size; i++)
+            deltaNew += r[i] * r[i];
+
+        // Calcul de beta
+        beta = deltaNew / delta;
+
+        // Mise à jour de d
+        for (int i = 0; i < size; i++)
+            d[i] = r[i] + beta * d[i];
+
+        delta = deltaNew;
+        k++;
+    }
+    printf("Convergence after %d iterations.\n", k);
+    free(r);
+    free(d);
+    free(s);
+}
 
 void femElasticityAssembleElements(femProblem *theProblem)
 {

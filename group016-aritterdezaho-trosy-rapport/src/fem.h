@@ -28,6 +28,8 @@
 typedef enum {FEM_TRIANGLE,FEM_QUAD,FEM_EDGE} femElementType;
 typedef enum {DIRICHLET_X,DIRICHLET_Y,NEUMANN_X,NEUMANN_Y} femBoundaryType;
 typedef enum {PLANAR_STRESS,PLANAR_STRAIN,AXISYM} femElasticCase;
+typedef enum {FEM_NO,FEM_XNUM,FEM_YNUM} femRenumType;
+typedef enum {SOLVEUR_PLEIN, SOLVEUR_BANDE, GRADIENTS_CONJUGUES} femSolverType;
 
 
 typedef struct {
@@ -40,6 +42,7 @@ typedef struct {
     int nLocalNode;
     int nElem;
     int *elem;
+    int *number;
     femNodes *nodes;
 } femMesh;
 
@@ -111,6 +114,8 @@ typedef struct {
     femDiscrete *spaceEdge;
     femIntegration *ruleEdge;
     femFullSystem *system;
+    femSolverType solver;
+    femRenumType renumType;
 } femProblem;
 
 
@@ -138,7 +143,8 @@ void                femElasticityAssembleNeumann(femProblem *theProblem);
 double*             femElasticitySolve(femProblem *theProblem);
 double*             femElasticityForces(femProblem *theProblem);
 double              femElasticityIntegrate(femProblem *theProblem, double (*f)(double x, double y));
-
+femProblem*         femElasticityRead(femGeo* theGeometry, const char *filename);
+void                femElasticityWrite(femProblem *theProblem, const char *filename);
 
 femIntegration*     femIntegrationCreate(int n, femElementType type);
 void                femIntegrationFree(femIntegration *theRule);
@@ -167,6 +173,8 @@ void                femError(char *text, int line, char *file);
 void                femErrorScan(int test, int line, char *file);
 void                femErrorGmsh(int test, int line, char *file);
 void                femWarning(char *text, int line, char *file);
+void                femPrintSolver(femSolverType solver, femRenumType renumType);
+void                femElasticityDebugPrint(femProblem *theProblem);
 
 
 #endif

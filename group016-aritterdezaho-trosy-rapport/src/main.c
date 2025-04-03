@@ -10,83 +10,152 @@
  */
  
 #include "glfem.h"
+#include <time.h>
+#include "fem.h"
 
 double fun(double x, double y) 
 {
     return 1;
 }
 
-int main(void)
+double computeTime(clock_t start, clock_t end) {
+    return (double)(end - start) / CLOCKS_PER_SEC;
+}
+
+void createNewMesh(const char *filename, double (*sizeCallback)(double x, double y)) {
+    femGeo* theGeometry = geoGetGeometry();
+
+    // Set the size callback
+    geoSetSizeCallback(sizeCallback);
+
+    // Set geometry parameters
+    double rInner = 1;
+    double rOuter = 1.2;
+
+    theGeometry->xCenter = 0.0;
+    theGeometry->yCenter = 0.0;
+    theGeometry->rInner  = rInner;
+    theGeometry->rOuter  = rOuter;
+    theGeometry->dInner  = rOuter - rInner;
+    theGeometry->dOuter  = 0.66 * rInner;
+    theGeometry->hInner  = 0.05;
+    theGeometry->hOuter  = 0.05;
+    theGeometry->h       = 0.15;
+    theGeometry->elementType = FEM_TRIANGLE;
+
+    // Generate and import the mesh
+    geoMeshGenerate();
+    geoMeshImport();
+    geoSetDomainName(0, "ExternalBoundary");
+    geoSetDomainName(1, "InternalBoundary");
+    geoMeshWrite(filename);
+}
+
+femProblem* createNewProblem(femGeo* theGeometry, const char *filename) {
+    double vMass = 1000; // mass of the vehicle in kg
+    double wMass = vMass / 4; // mass distributed on one wheel
+    double E = 5e6; // Young's modulus in Pa
+    double nu = 0.49; // Poisson's ratio
+    double rho = 1.1e3; // Density in kg/m³
+    double g = 9.81;
+
+    femProblem* theProblem = femElasticityCreate(theGeometry, E, nu, rho, g, PLANAR_STRESS);
+
+    // Weight of the car (force applied downward)
+    double F_car = g * wMass;
+    // Reaction force from the ground (force applied upward)
+    double F_reaction = F_car;
+    // Internal air pressure
+    double P_internal = 200000.0; // 200 kPa (2 bars)
+
+    // Neumann boundary conditions
+    femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", NEUMANN_Y, -F_car); // Downward force
+    femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", NEUMANN_Y, F_reaction); // Upward force
+    femElasticityAddBoundaryCondition(theProblem, "InternalBoundary", NEUMANN_X, P_internal); // Internal pressure (x)
+    femElasticityAddBoundaryCondition(theProblem, "InternalBoundary", NEUMANN_Y, P_internal); // Internal pressure (y)
+
+    // Dirichlet boundary conditions
+    femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", DIRICHLET_X, 0.0); // Block horizontal displacement
+    femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", DIRICHLET_Y, 0.0); // Block vertical displacement
+    femElasticityAddBoundaryCondition(theProblem, "InternalBoundary", DIRICHLET_X, 0.0); // Block horizontal displacement
+    femElasticityAddBoundaryCondition(theProblem, "InternalBoundary", DIRICHLET_Y, 0.0); // Block vertical displacement
+
+    femElasticityPrint(theProblem);
+    femElasticityWrite(theProblem, filename);
+    return theProblem;
+}
+
+int main(int argc, char *argv[])
 {  
+    double start, end;
+
+    char *meshFile = "../data/mesh.txt";
+    char *problemFile = "../data/problem.txt";
+    femSolverType solver = SOLVEUR_BANDE;
+    femRenumType renumType = FEM_XNUM;
+    double (*sizeCallback)(double x, double y) = geoSize; 
+
+    if (argc > 5) {
+        Error("Unexpected argument");
+    }
+    switch(argc) {
+        case 5:
+            if (*argv[4] == '0')
+                renumType  = FEM_NO;
+            else if (*argv[4] == 'X')
+                renumType  = FEM_XNUM;
+            else if (*argv[4] == 'Y')
+                renumType = FEM_YNUM;
+            else
+                Error("Unexpected argument");
+        case 4:
+            if (*argv[3] == 'B')
+                solver  = SOLVEUR_BANDE;
+            else if (*argv[3] == 'F')
+                solver  = SOLVEUR_PLEIN;
+            else if (*argv[3] == 'G')
+                solver = GRADIENTS_CONJUGUES;
+            else
+                Error("Unexpected argument");
+        case 3:
+            problemFile = argv[2];
+        case 2:
+            meshFile = argv[1];
+            if (argc==2) problemFile = "../data/problem.txt";
+            break;
+        default: printf("\nValeurs par défaut : ");
+    }
+
     printf("\n\n    V : Mesh and displacement norm \n");
     printf("    D : Domains \n");
     printf("    X : Horizontal residuals for unconstrained equations \n");
     printf("    Y : Horizontal residuals for unconstrained equations \n");
     printf("    N : Next domain highlighted\n\n\n");
 
-    double rInner = 1;
-    double rOuter = rInner + 0.2;
-      
     geoInitialize();
     femGeo* theGeometry = geoGetGeometry();
-    
-    theGeometry->xCenter = 0.0;
-    theGeometry->yCenter = 0.0;
-    theGeometry->rInner  = rInner;
-    theGeometry->rOuter  = rOuter;
-    theGeometry->dInner  = rOuter - rInner;
-    theGeometry->dOuter  = 0.66*rInner;
-    theGeometry->hInner  = 0.05;
-    theGeometry->hOuter  = 0.05;
-    theGeometry->h       = 0.15;   
-    theGeometry->elementType = FEM_TRIANGLE;
-  
-    geoMeshGenerate();
-    geoMeshImport();
-    geoSetDomainName(0,"ExternalBoundary");
-    geoSetDomainName(1,"InternalBoundary");
+    // décommenter cette ligne pour créer un nouveau maillage
+    //createNewMesh("../data/mesh_precis.txt", sizeCallback); 
+    geoMeshRead(meshFile);
 
-    geoMeshWrite("../data/elasticity.txt");
-    
         
 //
 //  -2- Creation probleme 
 //
+ 
+    femProblem* theProblem = createNewProblem(theGeometry, "../data/problem.txt");
+    theProblem->solver = solver;
+    theProblem->renumType = renumType;
     
-    double masveh = 1000; // masse du vehicule en kg
-    double massurroue = masveh/4; // masse du vegicule reparti sur une roue
-    double E   = 5e6;    // Module d'élasticité en Pa (1 MPa, variable selon le type de caoutchouc)
-    double nu  = 0.49;    // Coefficient de Poisson (proche de 0.5 pour un matériau quasi-incompressible)
-    double rho = 1.1e3;   // Densité en kg/m³ (typiquement entre 900 et 1300 kg/m³) 
-    double g   = 9.81;
-    femProblem* theProblem = femElasticityCreate(theGeometry,E,nu,rho,g,PLANAR_STRAIN);
-    // Poids de la voiture (force appliquée vers le bas)
-    double F_car = g*massurroue; // Exemple : 10 kN
-    // Réaction du sol (force appliquée vers le haut)
-    double F_reaction = F_car; // Exemple : 10 kN
-    // Pression interne de l'air
-    double P_internal = 200000.0; // Exemple : 200 kPa (2 bars)
-
-    // Conditions de Neumann
-    femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", NEUMANN_Y, -F_car); // Force vers le bas
-    femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", NEUMANN_Y, F_reaction); // Force vers le haut
-    femElasticityAddBoundaryCondition(theProblem, "InternalBoundary", NEUMANN_X, P_internal); // Pression interne (x)
-    femElasticityAddBoundaryCondition(theProblem, "InternalBoundary", NEUMANN_Y, P_internal); // Pression interne (y)
-
-    // Conditions de Dirichlet
-    femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", DIRICHLET_X, 0.0); // Bloque déplacement horizontal
-    femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", DIRICHLET_Y, 0.0); // Bloque déplacement vertical
-    femElasticityAddBoundaryCondition(theProblem, "InternalBoundary", DIRICHLET_X, 0.0); // Bloque déplacement horizontal
-    femElasticityAddBoundaryCondition(theProblem, "InternalBoundary", DIRICHLET_Y, 0.0); // Bloque déplacement vertical
-    femElasticityPrint(theProblem);
-
 //
 //  -3- Resolution du probleme et calcul des forces
 //
 
+    start = clock();
     double *theSoluce = femElasticitySolve(theProblem);
     double *theForces = femElasticityForces(theProblem);
-    double area = femElasticityIntegrate(theProblem, fun);   
+    double area = femElasticityIntegrate(theProblem, fun); 
+    end = clock();
    
 //
 //  -4- Deformation du maillage pour le plot final
@@ -122,7 +191,7 @@ int main(void)
         theGlobalForce[1] += theForces[2*i+1]; }
     printf(" ==== Global horizontal force       : %14.7e [N] \n",theGlobalForce[0]);
     printf(" ==== Global vertical force         : %14.7e [N] \n",theGlobalForce[1]);
-    printf(" ==== Weight                        : %14.7e [N] \n", area * rho * g);
+    printf(" ==== Weight                        : %14.7e [N] \n", area * theProblem->rho * theProblem->g);
 
 //
 //  -6- Visualisation du maillage
@@ -177,6 +246,8 @@ int main(void)
              glfwWindowShouldClose(window) != 1 );
             
     // Check if the ESC key was pressed or the window was closed
+
+    printf("\nComputing solution takes %.6f seconds\n", computeTime(start, end));
 
     free(normDisplacement);
     free(forcesX);

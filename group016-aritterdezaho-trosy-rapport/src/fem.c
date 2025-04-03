@@ -20,10 +20,9 @@ double geoGmshSize(int dim, int tag, double x, double y, double z, double lc, vo
 void geoInitialize() 
 {
     int ierr;
-    theGeometry.geoSize = geoSize;
-    gmshInitialize(0,NULL,1,0,&ierr);                         ErrorGmsh(ierr);
-    gmshModelAdd("MyGeometry",&ierr);                         ErrorGmsh(ierr);
-    gmshModelMeshSetSizeCallback(geoGmshSize,NULL,&ierr);     ErrorGmsh(ierr);
+    gmshInitialize(0, NULL, 1, 0, &ierr);                         ErrorGmsh(ierr);
+    gmshModelAdd("MyGeometry", &ierr);                            ErrorGmsh(ierr);
+    gmshModelMeshSetSizeCallback(geoGmshSize, NULL, &ierr);       ErrorGmsh(ierr);
     theGeometry.theNodes = NULL;
     theGeometry.theElements = NULL;
     theGeometry.theEdges = NULL;
@@ -858,7 +857,7 @@ void femElasticityPrint(femProblem *theProblem)
           printf("  %20s :",theCondition->domain->name);
           if (theCondition->type==DIRICHLET_X)  printf(" imposing %9.2e as the horizontal displacement  \n",value);
           if (theCondition->type==DIRICHLET_Y)  printf(" imposing %9.2e as the vertical displacement  \n",value); 
-          if (theCondition->type==NEUMANN_X)    printf(" imposing %9.2e as the horizontal force desnity \n",value); 
+          if (theCondition->type==NEUMANN_X)    printf(" imposing %9.2e as the horizontal force density \n",value); 
           if (theCondition->type==NEUMANN_Y)    printf(" imposing %9.2e as the vertical force density \n",value);}
     printf(" ======================================================================================= \n\n");
 }
@@ -956,4 +955,195 @@ void femWarning(char *text, int line, char *file)
     printf("\n-------------------------------------------------------------------------------- ");
     printf("\n  Warning in %s at line %d : \n  %s\n", file, line, text);
     printf("--------------------------------------------------------------------- Yek Yek !! \n\n");                                              
+}
+
+femProblem* femElasticityRead(femGeo* theGeometry, const char *filename) {
+    FILE* file = fopen(filename, "r");
+    if (file == NULL) {
+        Error("Cannot open the file for reading");
+    }
+
+    femProblem* theProblem = malloc(sizeof(femProblem));
+    theProblem->geometry = theGeometry;
+
+    char line[MAXNAME];
+    ErrorScan(fgets(line, MAXNAME, file)); // Skip the first line
+    ErrorScan(fscanf(file, "   Young modulus   E   =  %le [N/m2]\n", &theProblem->E));
+    ErrorScan(fscanf(file, "   Poisson's ratio nu  =  %le [-]\n", &theProblem->nu));
+    ErrorScan(fscanf(file, "   Density         rho =  %le [kg/m3]\n", &theProblem->rho));
+    ErrorScan(fscanf(file, "   Gravity         g   =  %le [m/s2]\n", &theProblem->g));
+
+    ErrorScan(fgets(line, MAXNAME, file)); // Read the problem type line
+    if (strstr(line, "Planar stresses formulation") != NULL) {
+        theProblem->planarStrainStress = PLANAR_STRESS;
+    } else if (strstr(line, "Planar strains formulation") != NULL) {
+        theProblem->planarStrainStress = PLANAR_STRAIN;
+    } else if (strstr(line, "Axisymmetric formulation") != NULL) {
+        theProblem->planarStrainStress = AXISYM;
+    } else {
+        Error("Unknown problem type");
+    }
+
+    if (theProblem->planarStrainStress == PLANAR_STRESS) {
+        theProblem->A = theProblem->E / (1 - theProblem->nu * theProblem->nu);
+        theProblem->B = theProblem->E * theProblem->nu / (1 - theProblem->nu * theProblem->nu);
+        theProblem->C = theProblem->E / (2 * (1 + theProblem->nu));
+    } else if (theProblem->planarStrainStress == PLANAR_STRAIN || theProblem->planarStrainStress == AXISYM) {
+        theProblem->A = theProblem->E * (1 - theProblem->nu) / ((1 + theProblem->nu) * (1 - 2 * theProblem->nu));
+        theProblem->B = theProblem->E * theProblem->nu / ((1 + theProblem->nu) * (1 - 2 * theProblem->nu));
+        theProblem->C = theProblem->E / (2 * (1 + theProblem->nu));
+    }
+
+    ErrorScan(fgets(line, MAXNAME, file)); // Skip the boundary conditions header
+    int nBoundaryConditions = 0;
+    theProblem->conditions = NULL;
+
+    while (fgets(line, MAXNAME, file) != NULL) {
+        femBoundaryCondition* theCondition = malloc(sizeof(femBoundaryCondition));
+        char domainName[MAXNAME];
+        char boundaryType[MAXNAME];
+        double value;
+
+        // Adjust parsing to handle extra spaces or formatting inconsistencies
+        if (sscanf(line, " %s : imposing %le as the %[^\n]", domainName, &value, boundaryType) != 3) {
+            Error("Error reading boundary condition");
+        }
+
+        int iDomain = geoGetDomain(domainName);
+        if (iDomain == -1) {
+            Error("Undefined domain in boundary condition");
+        }
+
+        theCondition->domain = theGeometry->theDomains[iDomain];
+        theCondition->value = value;
+
+        if (strstr(boundaryType, "horizontal displacement") != NULL) {
+            theCondition->type = DIRICHLET_X;
+        } else if (strstr(boundaryType, "vertical displacement") != NULL) {
+            theCondition->type = DIRICHLET_Y;
+        } else if (strstr(boundaryType, "horizontal force density") != NULL) {
+            theCondition->type = NEUMANN_X;
+        } else if (strstr(boundaryType, "vertical force density") != NULL) {
+            theCondition->type = NEUMANN_Y;
+        } else {
+            Error("Unknown boundary condition type");
+        }
+
+        nBoundaryConditions++;
+        theProblem->conditions = realloc(theProblem->conditions, nBoundaryConditions * sizeof(femBoundaryCondition*));
+        theProblem->conditions[nBoundaryConditions - 1] = theCondition;
+    }
+
+    theProblem->nBoundaryConditions = nBoundaryConditions;
+    fclose(file);
+
+    return theProblem;
+}
+
+void femPrintSolver(femSolverType solver, femRenumType renumType) {
+    switch (solver) {
+        case SOLVEUR_BANDE:
+            printf("\nSolveur bande\n");
+            break;
+        case SOLVEUR_PLEIN:
+            printf("\nSolveur plein\n");
+            break;
+        case GRADIENTS_CONJUGUES:
+            printf("\nGradients conjugués\n");
+            break;
+    }
+    switch (renumType) {
+        case FEM_NO:
+            printf("Pas de renumérotation");
+            break;
+        case FEM_XNUM:
+            printf("Renumérotation X");
+            break;
+        case FEM_YNUM:
+            printf("Renumérotation Y");
+            break;
+    }
+}
+
+void femElasticityDebugPrint(femProblem *theProblem) {
+    printf("\n\n==================== DEBUG PRINT ====================\n");
+    printf("Young modulus   E   = %14.7e [N/m2]\n", theProblem->E);
+    printf("Poisson's ratio nu  = %14.7e [-]\n", theProblem->nu);
+    printf("Density         rho = %14.7e [kg/m3]\n", theProblem->rho);
+    printf("Gravity         g   = %14.7e [m/s2]\n", theProblem->g);
+
+    if (theProblem->planarStrainStress == PLANAR_STRAIN) {
+        printf("Planar strains formulation\n");
+    } else if (theProblem->planarStrainStress == PLANAR_STRESS) {
+        printf("Planar stresses formulation\n");
+    } else if (theProblem->planarStrainStress == AXISYM) {
+        printf("Axisymmetric formulation\n");
+    } else {
+        printf("Unknown formulation\n");
+    }
+
+    printf("Material constants:\n");
+    printf("  A = %14.7e\n", theProblem->A);
+    printf("  B = %14.7e\n", theProblem->B);
+    printf("  C = %14.7e\n", theProblem->C);
+
+    printf("Boundary conditions (%d):\n", theProblem->nBoundaryConditions);
+    for (int i = 0; i < theProblem->nBoundaryConditions; i++) {
+        femBoundaryCondition *condition = theProblem->conditions[i];
+        printf("  Domain: %s\n", condition->domain->name);
+        printf("  Value: %14.7e\n", condition->value);
+        printf("  Type: ");
+        switch (condition->type) {
+            case DIRICHLET_X: printf("DIRICHLET_X\n"); break;
+            case DIRICHLET_Y: printf("DIRICHLET_Y\n"); break;
+            case NEUMANN_X:   printf("NEUMANN_X\n"); break;
+            case NEUMANN_Y:   printf("NEUMANN_Y\n"); break;
+            default:          printf("UNKNOWN\n"); break;
+        }
+    }
+
+    printf("Constrained nodes:\n");
+    int size = 2 * theProblem->geometry->theNodes->nNodes;
+    for (int i = 0; i < size; i++) {
+        printf("  Node %d: %d\n", i, theProblem->constrainedNodes[i]);
+    }
+
+    printf("Solution vector:\n");
+    for (int i = 0; i < size; i++) {
+        printf("  Sol[%d] = %14.7e\n", i, theProblem->soluce[i]);
+    }
+
+    printf("Residuals vector:\n");
+    for (int i = 0; i < size; i++) {
+        printf("  Res[%d] = %14.7e\n", i, theProblem->residuals[i]);
+    }
+
+    printf("==================== END DEBUG PRINT ====================\n\n");
+}
+
+void femElasticityWrite(femProblem *theProblem, const char *filename) {
+    FILE *file = fopen(filename, "w");
+    if (file == NULL) {
+        Error("Cannot open file for writing");
+    }
+
+    fprintf(file, "Elasticity Problem Details:\n");
+    fprintf(file, "E (Young's Modulus): %e\n", theProblem->E);
+    fprintf(file, "nu (Poisson's Ratio): %e\n", theProblem->nu);
+    fprintf(file, "rho (Density): %e\n", theProblem->rho);
+    fprintf(file, "g (Gravity): %e\n", theProblem->g);
+    fprintf(file, "Type: %s\n", theProblem->planarStrainStress == PLANAR_STRESS ? "Planar Stress" : "Planar Strain");
+
+    fprintf(file, "\nBoundary Conditions:\n");
+    for (int i = 0; i < theProblem->nBoundaryConditions; i++) {
+        femBoundaryCondition *bc = &theProblem->conditions[i];
+        fprintf(file, "  Domain: %s, Type: %s, Value: %e\n",
+                bc->domain->name,
+                bc->type == DIRICHLET_X ? "DIRICHLET_X" :
+                bc->type == DIRICHLET_Y ? "DIRICHLET_Y" :
+                bc->type == NEUMANN_X ? "NEUMANN_X" : "NEUMANN_Y",
+                bc->value);
+    }
+
+    fclose(file);
 }
