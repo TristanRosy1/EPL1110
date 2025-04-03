@@ -70,7 +70,7 @@ int main(void)
     // Réaction du sol (force appliquée vers le haut)
     double F_reaction = F_car; // Exemple : 10 kN
     // Pression interne de l'air
-    double P_internal = 200000; // Exemple : 200 kPa (2 bars)
+    double P_internal = 200000; // Exemple : 200 kPa (2 bars) pression effective dans la chambre a aire
 
     // Conditions de Neumann
     femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", NEUMANN_Y, -F_car); // Force vers le bas aucune diff entre les 2 axes
