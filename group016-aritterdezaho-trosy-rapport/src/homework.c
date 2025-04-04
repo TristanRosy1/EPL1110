@@ -271,9 +271,105 @@ void femApplyBoundaryConditions(femProblem *theProblem) {
         int * bndElem = cnd->domain->elem;
         int nElem = cnd->domain->nElem;
         int node0, node1;
-                   
 
-        if (cnd->type == NEUMANN_X || cnd->type == NEUMANN_Y) {
+        // Pour des conditons en normales-tangents
+        if (cnd->type == DIRICHLET_N || cnd->type == DIRICHLET_T ||
+                cnd->type == NEUMANN_N || cnd->type == NEUMANN_T) {
+
+            if (cnd->domain->n_t_malloced == 0) { // si les n et t n'ont pas encore été calculées
+                cnd->domain->n_t_malloced = 1;
+
+                // nbre de noeuds = nbre de segments + 1, et pour chaque noeud, normale et tangent = vecteur de taille 2
+                cnd->domain->normales = calloc(sizeof(double), 2 * (bndMesh->nElem + 1) ); 
+                cnd->domain->tangentes = calloc(sizeof(double),  2 * (bndMesh->nElem + 1) ); 
+                double *normales = cnd->domain->normales;
+                double *tangentes = cnd->domain->tangentes;
+
+                // Calcul des normales et tangentes
+                for (int j = 0; j < nElem; j++){
+                    node0 = bndMesh->elem[2 * bndElem[j]];
+                    node1 = bndMesh->elem[2 * bndElem[j] + 1];
+                    double dx = X[node1] - X[node0];
+                    double dy = Y[node1] - Y[node0];
+
+                    // contributions au noeud gauche
+                    tangentes[2 * j]        += dx;
+                    tangentes[2 * j + 1]    += dy;
+                    normales[2 * j]         += - dy;
+                    normales[2 * j + 1]     += dx;
+
+                    // contributions au noeud droite
+                    tangentes[2 * (j+1)]        += dx;
+                    tangentes[2 * (j+1) + 1]    += dy;
+                    normales[2 * (j+1)]         += - dy;
+                    normales[2 * (j+1) + 1]     += dx;
+                }
+
+                // Normalisation des normales et tangentes :
+                for (int j = 0; j < nElem + 1; j++){
+                    double norm = sqrt( tangentes[2*j]*tangentes[2*j] + tangentes[2*j+1]*tangentes[2*j+1]);
+                    tangentes[2*j] /= norm; tangentes[2*j+1] /= norm;
+                    norm = sqrt( normales[2*j]*normales[2*j] + normales[2*j+1]*normales[2*j+1]);
+                    normales[2*j] /= norm; normales[2*j+1] /= norm;
+                }
+            }
+            
+            if ((cnd->type == DIRICHLET_N || cnd->type == DIRICHLET_T) &&
+                    cnd->domain->n_t_matrix == 0) { // si A et B n'ont pas été adaptés en n - t
+                cnd->domain->n_t_matrix = 1;
+                // Itération sur tous les noeuds du domaine
+                for (int j = 0; j < nElem + 1; j++){
+                    // technique pour récupérer tous les noeuds sur base des éléments
+                    if (j == nElem) {
+                        node0 = bndMesh->elem[2 * bndElem[j-1] + 1];
+                    }
+                    else {node0 = bndMesh->elem[2 * bndElem[j]];}
+
+                    // Combinaison linéaire des lignes et colonnes de la matrice pour changer (U, V) en (N, T) (voir rapport)
+                    double A_U, A_V, B_U, B_V, nx, ny, tx, ty;
+                    double *normales    = cnd->domain->normales;
+                    double *tangentes   = cnd->domain->tangentes;
+                    nx = normales[2 * j];   ny = normales[2 * j+1];
+                    tx = tangentes[2 * j];  ty = tangentes[2 * j+1];
+
+                    node0 = theMesh->number[node0]; // renumérotation
+                    node1 = theMesh->number[node1];
+                    // Modification de B
+                    B_U = B[2*node0];   B_V = B[2*node0+1];
+                    B[2*node0]      = nx * B_U + ny * B_V;
+                    B[2*node0 + 1]  = tx * B_U + ty * B_V;
+                    // Modification des lignes de A
+                    for (int k = 0; k < theSystem->size; k++) {
+                        A_U = A[2*node0][k];    A_V = A[2*node0+1][k];
+                        A[2*node0][k]   = nx *A_U + ny * A_V;
+                        A[2*node0+1][k] = tx *A_U + ty * A_V;
+                    }
+                    // Modification des colonnes de A
+                    for (int k = 0; k < theSystem->size; k++) {
+                        A_U = A[k][2*node0];    A_V = A[k][2*node0+1];
+                        A[k][2*node0]   = nx *A_U + ny * A_V;
+                        A[k][2*node0+1] = tx *A_U + ty * A_V;
+                    }
+                }
+            }
+                   
+        }
+
+        // Application des différentes conditions
+        if (cnd->type == DIRICHLET_N || cnd->type == DIRICHLET_T) {
+          
+            for (int j = 0; j < nElem + 1; j++){
+                if (j == nElem) {
+                    node0 = bndMesh->elem[2 * bndElem[j-1] + 1];
+                }
+                else {node0 = bndMesh->elem[2 * bndElem[j]];}       
+                int shift = (cnd->type == DIRICHLET_N) ? 0 : 1;
+                femFullSystemConstrain(theSystem, 2 * node0 + shift,  cnd->value);
+            }
+        }
+
+        if (cnd->type == NEUMANN_X || cnd->type == NEUMANN_Y ||
+            cnd->type == NEUMANN_N || cnd->type == NEUMANN_T) {
             for (int j = 0; j < nElem; j++) {
                 node0 = bndMesh->elem[2 * bndElem[j]];
                 node1 = bndMesh->elem[2 * bndElem[j] + 1];                
@@ -305,12 +401,24 @@ void femApplyBoundaryConditions(femProblem *theProblem) {
                         B[2 * node0 + shift] += jac * cnd->value;
                         B[2 * node1 + shift] += jac * cnd->value;                      
                     }
+
+                }
+                else if (cnd->type == NEUMANN_N || cnd->type == NEUMANN_T){ // NEUMANN_N ou NEUMANN_T
+                    double *n_or_t = (cnd->type == NEUMANN_N) ? cnd->domain->normales : cnd->domain->tangentes;
+                    // l'index du noeud gauche dans n_or_t = index de l'élement
+                    // l'index du noeud gauche dans n_or_t = index de l'élement + 1
+                    node0 = theMesh->number[node0]; // renumérotation
+                    node1 = theMesh->number[node1];
+                    B[2 * node0]        += jac * cnd->value *     n_or_t[2 * j];
+                    B[2 * node0 + 1]    += jac * cnd->value *     n_or_t[2 * j + 1];
+                    B[2 * node1]        += jac * cnd->value *     n_or_t[2 * (j+1)];
+                    B[2 * node1 + 1]    += jac * cnd->value *     n_or_t[2*(j+1) + 1] ;
                 }
 
             }
         }
-    }
-    
+    }  
+
     // Conditions DIRICHLET X-Y
     int *theConstrainedNodes = theProblem->constrainedNodes; // NB : ici nodes ne correspond pas à un noeud, mais à la composante x ou y
     for (int i=0; i < theSystem->size; i++) {
@@ -322,6 +430,54 @@ void femApplyBoundaryConditions(femProblem *theProblem) {
                 int node = (i - shift) / 2;
                 int index = theMesh->number[node] * 2 + shift;  // renumérotation
                 femFullSystemConstrain(theSystem, index,value); }
+            }
+        }
+
+}
+
+void femEquationsN_Tto_U_V(femProblem *theProblem, double *sol) {
+    femFullSystem *theSystem = theProblem->system;
+    femMesh *theMesh         = theProblem->geometry->theElements;
+    double **A  = theSystem->A;
+    double *B   = sol;
+    
+    for (int i = 0; i < theProblem->nBoundaryConditions; i++) {
+    femBoundaryCondition* cnd = theProblem->conditions[i] ;
+        if ( (cnd->type == DIRICHLET_N || cnd->type == DIRICHLET_T) &&
+                (cnd->domain->n_t_matrix == 1) ) { // si on a pas encore converti de N-T en U-V
+            cnd->domain->n_t_malloced = 0;
+            int nElem = cnd->domain->nElem;
+            femMesh * bndMesh = cnd->domain->mesh;
+            int * bndElem = cnd->domain->elem;
+            int node0, nx, ny, tx, ty;
+            double *normales = cnd->domain->normales;
+            double *tangentes = cnd->domain->tangentes;
+
+            for (int j = 0; j < nElem + 1; j++){
+                if (j == nElem) {
+                    node0 = bndMesh->elem[2 * bndElem[j-1] + 1];
+                }
+                else {node0 = bndMesh->elem[2 * bndElem[j]];}
+
+                nx = normales[2 * j];   ny = normales[2 * j+1];          
+                tx = tangentes[2 * j];  ty = tangentes[2 * j+1];
+
+                node0 = theMesh->number[node0]; // renumérotation
+                double B_U = B[2*node0];    double B_V = B[2*node0+1];
+                B[2*node0]      = nx * B_U + ny * B_V;
+                B[2*node0 + 1]  = tx * B_U + ty * B_V;
+            }
+        }
+    }
+}
+
+void femFreeN_T(femProblem *theProblem) {
+    // free tan - norm
+    for (int i = 0; i < theProblem->nBoundaryConditions; i++) {
+        femBoundaryCondition* cnd = theProblem->conditions[i] ;
+            if (cnd->domain->n_t_malloced == 1) {
+                free(cnd->domain->normales);
+                free(cnd->domain->tangentes);
             }
         }
 }
@@ -403,9 +559,6 @@ double *femElasticitySolve(femProblem *theProblem)
     femMesh *theMesh = theGeometry->theElements;
 
     femFullSystemInit(system);
-
-    // femElasticityAssembleElements(theProblem);
-    // femElasticityAssembleNeumann(theProblem);
 
     int nLocal = theMesh->nLocalNode;
     double x[nLocal], y[nLocal], phi[nLocal], dphidxsi[nLocal], dphideta[nLocal], dphidx[nLocal], dphidy[nLocal];
@@ -494,6 +647,9 @@ double *femElasticitySolve(femProblem *theProblem)
     } else if (theProblem->solver == GRADIENTS_CONJUGUES) {
         conjugateGradient(A, B, sol, theSystem->size);
     }
+
+    femEquationsN_Tto_U_V(theProblem, sol);
+    femFreeN_T(theProblem);
 
     for (int i = 0; i < theMesh->nodes->nNodes; i++) {
         B[2 * i] = sol[2 * theMesh->number[i]];

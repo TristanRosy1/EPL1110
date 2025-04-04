@@ -22,97 +22,123 @@ double computeTime(clock_t start, clock_t end) {
     return (double)(end - start) / CLOCKS_PER_SEC;
 }
 
+void geoDivideDomain(char *domainName, char *newDomainName, femGeo* theGeometry, double grad1, double grad2) {
+    if (grad1 < 0 || grad1 >= 360 || grad2 < 0 || grad2 >= 360) {
+        Error("Angles positif svp");
+    }
+
+    int domainIndex = geoGetDomain(domainName);
+    if (domainIndex == -1) {
+        Error("domaine n'existe pas!");
+    }
+
+    femDomain *originalDomain = theGeometry->theDomains[domainIndex];
+    int nElem = originalDomain->nElem;
+
+    double rad1 = grad1 * M_PI / 180.0;
+    double rad2 = grad2 * M_PI / 180.0;
+
+    int *newElem = malloc(sizeof(int) * nElem);
+    int nNewElem = 0;
+
+    for (int i = 0; i < nElem; i++) {
+        int elemIndex = originalDomain->elem[i];
+        double x = originalDomain->mesh->nodes->X[elemIndex];
+        double y = originalDomain->mesh->nodes->Y[elemIndex];
+        double angle = atan2(y - theGeometry->yCenter, x - theGeometry->xCenter);
+
+        if (angle < 0) {
+            angle += 2 * M_PI;
+        }
+
+        if ((rad1 < rad2 && angle >= rad1 && angle <= rad2) ||
+            (rad1 > rad2 && (angle >= rad1 || angle <= rad2))) {
+            newElem[nNewElem++] = elemIndex;
+        }
+    }
+
+    femDomain *newDomain = malloc(sizeof(femDomain));
+    newDomain->mesh = originalDomain->mesh;
+    newDomain->nElem = nNewElem;
+    newDomain->elem = malloc(sizeof(int) * nNewElem);
+
+    for (int i = 0; i < nNewElem; i++) {
+        newDomain->elem[i] = newElem[i];
+    }
+
+    int nRemainingElem = 0;
+    for (int i = 0; i < nElem; i++) {
+        int elemIndex = originalDomain->elem[i];
+        int isInNewDomain = 0;
+        for (int j = 0; j < nNewElem; j++) {
+            if (elemIndex == newElem[j]) {
+                isInNewDomain = 1;
+                break;
+            }
+        }
+        if (!isInNewDomain) {
+            originalDomain->elem[nRemainingElem++] = elemIndex;
+        }
+    }
+    originalDomain->nElem = nRemainingElem;
+
+    theGeometry->nDomains++;
+    theGeometry->theDomains = realloc(theGeometry->theDomains, sizeof(femDomain *) * theGeometry->nDomains);
+    theGeometry->theDomains[theGeometry->nDomains - 1] = newDomain;
+
+    geoSetDomainName(theGeometry->nDomains - 1, newDomainName);
+
+    free(newElem);
+}
+
 void createNewMesh(const char *filename, double (*sizeCallback)(double x, double y)) {
     femGeo* theGeometry = geoGetGeometry();
 
-    // Set the size callback
     geoSetSizeCallback(sizeCallback);
 
-    // Set geometry parameters
-    double rInner = 1;
     double rOuter = 1.2;
 
     theGeometry->xCenter = 0.0;
     theGeometry->yCenter = 0.0;
-    theGeometry->rInner  = rInner;
     theGeometry->rOuter  = rOuter;
-    theGeometry->dInner  = rOuter - rInner;
-    theGeometry->dOuter  = 0.66 * rInner;
-    theGeometry->hInner  = 0.05;
-    theGeometry->hOuter  = 0.05;
-    theGeometry->h       = 0.15;
+    theGeometry->dOuter  = rOuter;
+    theGeometry->hOuter  = 0.03;
+    theGeometry->h       = 0.1;
     theGeometry->elementType = FEM_TRIANGLE;
 
-    // Generate and import the mesh
     geoMeshGenerate();
     geoMeshImport();
-    geoSetDomainName(0, "InternalBoundary");
-    geoSetDomainName(1, "OuterBoundary2");
-    geoSetDomainName(3, "OuterBoundary1");
-    geoSetDomainName(4, "Bottom");
+    geoSetDomainName(0, "OuterBoundary0");
+
+    // Divisions en plusieurs domaines pour pouvoir appliquer des conditions aux limites au bon endroit
+    geoDivideDomain("OuterBoundary0", "OuterBoundary1", theGeometry, 358, 178);
+    geoDivideDomain("OuterBoundary0", "OuterBoundary2", theGeometry, 253, 283);
+
     geoMeshWrite(filename);
 }
 
 
 femProblem* createNewProblem(femGeo* theGeometry, const char *filename) {
-    double vMass = 12000; // mass of the vehicle in kg
-    double wMass = vMass / 4; // mass distributed on one wheel
-    double E = 0.01e9; // Young's modulus in Pa
-    double nu = 0.49; // Poisson's ratio
-    double rho = 1100; // Density in kg/m³
-    double g = 9.81;
+    double vMass = 1200; // masse du rover en kg
+    double wMass = vMass / 4; // masse distribué sur une roue
+
+    double g = 8.87; // Gravité Venus
+
+    // Propriétés de l'alliage Inconel
+    double E = 210e9; // Module de Young en Pa
+    double nu = 0.3; // Coefficient de Poisson
+    double rho = 8000; // Densité in kg/m³
 
     femProblem* theProblem = femElasticityCreate(theGeometry, E, nu, rho, g, AXISYM);
 
-    // Weight of the car (force applied downward)
-    double F_car = g * wMass;
-    // Reaction force from the ground (force applied upward)
-    double F_reaction = F_car;
-    // Internal air pressure
-    double P_internal = 200000.0; // 200 kPa (2 bars)
+    double fRover = g * wMass; // Poids du rover sur Venus en N
 
-    femElasticityAddBoundaryCondition(theProblem, "OuterBoundary1", NEUMANN_Y, -F_car); // Force vers le bas aucune diff entre les 2 axes
-    //femElasticityAddBoundaryCondition(theProblem, "Arc", NEUMANN_Y, F_reaction); // Force vers le haut
-    //femElasticityAddBoundaryCondition(theProblem, "InternalBoundary", NEUMANN_X, P_internal); // Pression interne (x) aucune diff entre les 2 axes
-    //femElasticityAddBoundaryCondition(theProblem, "InternalBoundary", NEUMANN_Y, P_internal); // Pression interne (y)
+    femElasticityAddBoundaryCondition(theProblem, "OuterBoundary0", NEUMANN_N, -fRover); 
+    femElasticityAddBoundaryCondition(theProblem, "OuterBoundary2", DIRICHLET_X, 0.0); 
+    femElasticityAddBoundaryCondition(theProblem, "OuterBoundary2", DIRICHLET_Y, 0.0);
 
-    // for (int i = 0; i < theGeometry->theNodes->nNodes; i++) {
-    //     double x = theGeometry->theNodes->X[i];
-    //     double y = theGeometry->theNodes->Y[i];
-    //     double xCenter = theGeometry->xCenter;
-    //     double EPSILON = 1e-2; // Tolérance pour comparer
-    
-    //     // Si le nœud est à gauche du centre, impose un déplacement vers la gauche
-    //     if (x < xCenter - EPSILON) {
-    //         femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", DIRICHLET_X, -1e-2); // Déplacement vers la gauche
-    //     }
-    
-    //     // Si le nœud est à droite du centre, impose un déplacement vers la droite
-    //     if (x > xCenter + EPSILON) {
-    //         femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", DIRICHLET_X, 1e-2); // Déplacement vers la droite
-    //     }
-    
-    //     // Bloquer les déplacements verticaux sur l'axe vertical (x = xCenter)
-    //     if (fabs(x - xCenter) < EPSILON) {
-    //         femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", DIRICHLET_Y, 0.0);
-    //     }
-    // }
-    //femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", DIRICHLET_X, 1e-2); // Bloque déplacement horizontal
-    //femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", DIRICHLET_Y, 0.0);
-    // Déplacement symétrique selon X à gauche et à droite du centre
-    //femElasticityAddBoundaryCondition(theProblem, "LeftBoundary", DIRICHLET_X, -1e-2);  // Vers la gauche
-    //femElasticityAddBoundaryCondition(theProblem, "RightBoundary", DIRICHLET_X, 1e-2);  // Vers la droite
-
-    // Bloquer les déplacements verticaux pour conserver la symétrie
-    //femElasticityAddBoundaryCondition(theProblem, "LeftBoundary", DIRICHLET_Y, 0.0); 
-    //femElasticityAddBoundaryCondition(theProblem, "RightBoundary", DIRICHLET_Y, 0.0);
-
-    // condition domaine interieur
-    // femElasticityAddBoundaryCondition(theProblem, "BottomLeft", DIRICHLET_Y, 0.0); // Bloque déplacement horizontal
-    // femElasticityAddBoundaryCondition(theProblem, "BottomRight", DIRICHLET_Y, 0.0); // Bloque déplacement vertical
-    femElasticityAddBoundaryCondition(theProblem, "Bottom", DIRICHLET_X, 0.0); // Bloque déplacement horizontal
-    femElasticityAddBoundaryCondition(theProblem, "Bottom", DIRICHLET_Y, 0.0);
     femElasticityWrite(theProblem, filename);
+
     return theProblem;
 }
 
@@ -124,7 +150,7 @@ int main(int argc, char *argv[])
     char *problemFile = "../data/problem.txt"; // Problème par défaut
     femSolverType solver = SOLVEUR_BANDE;
     femRenumType renumType = FEM_XNUM;
-    double (*sizeCallback)(double x, double y) = geoSize; // Choisir entre geoSize et geoSizeDefault
+    double (*sizeCallback)(double x, double y) = geoSizeDefault; // Choisir entre geoSize et geoSizeDefault
 
     // Lecture des arguments
     if (argc > 5) {
@@ -166,15 +192,15 @@ int main(int argc, char *argv[])
 
     geoInitialize();
     femGeo* theGeometry = geoGetGeometry();
-    createNewMesh("../data/mesh.txt", sizeCallback); //  Décommenter cette ligne pour créer un nouveau maillage
-    //geoMeshRead(meshFile); // Commenter cette ligne si tu décommente celle au dessus
+    //createNewMesh("../data/mesh.txt", sizeCallback); //  Décommenter cette ligne pour créer un nouveau maillage
+    geoMeshRead(meshFile); // Commenter cette ligne si tu décommente celle au dessus
     
 //
 //  -2- Creation probleme 
 //  
 
-    femProblem* theProblem = createNewProblem(theGeometry, "../data/problem.txt");   // Décommenter cette ligne pour créer un nouveau problème
-    //femProblem* theProblem = femElasticityRead(theGeometry, problemFile); // Commenter cette ligne si tu décommente celle au dessus
+    //femProblem* theProblem = createNewProblem(theGeometry, "../data/problem.txt");   // Décommenter cette ligne pour créer un nouveau problème
+    femProblem* theProblem = femElasticityRead(theGeometry, problemFile); // Commenter cette ligne si tu décommente celle au dessus
     femElasticityPrint(theProblem);
     theProblem->solver = solver;
     theProblem->renumType = renumType;

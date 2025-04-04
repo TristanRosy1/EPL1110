@@ -384,45 +384,19 @@ double geoSize(double x, double y){
     double h = theGeometry->h;
     double x0 = theGeometry->xCenter;
     double y0 = theGeometry->yCenter;
-
-    double rInner = theGeometry->rInner;
-    double dInner = theGeometry->dInner;
-    double hInner = theGeometry->hInner;
-
     double rOuter = theGeometry->rOuter;
     double dOuter = theGeometry->dOuter;
     double hOuter = theGeometry->hOuter;
-
     double hfinal = h;
 
-    // Distance de la frontière interne (influence de la pression interne)
-    double d = sqrt((x-x0)*(x-x0) + (y-y0)*(y-y0)) - rInner;
-    if (d < dInner) {
-        double a = (-2*h + 2*hInner)/(dInner*dInner*dInner);
-        double b = (3*h  - 3*hInner)/(dInner*dInner);
+    double tempX = x*x*x;
+
+    double d = sqrt((tempX-x0)*(tempX-x0) + (y-rOuter)*(y-rOuter));
+    if (d < dOuter) {
+        double a = (-2*h + 2*hOuter)/(dOuter*dOuter*dOuter);
+        double b = (3*h  - 3*hOuter)/(dOuter*dOuter);
         double c = 0;
-        hfinal = a*d*d*d + b*d*d + c*d + hInner; 
-    }
-
-    double tempX = fabs(x - x0);
-
-    if (y < 0){
-        // Distance du point de contact de la réaction du sol (frontière externe)
-        d = sqrt((tempX-x0)*(tempX-x0) + (y+rOuter)*(y+rOuter));
-        if (d < dOuter) {
-            double a = (-2*h + 2*hOuter)/(dOuter*dOuter*dOuter);
-            double b = (3*h  - 3*hOuter)/(dOuter*dOuter);
-            double c = 0;
-            hfinal = fmin(hfinal,a*d*d*d + b*d*d + c*d + hOuter); }
-    } else {
-        // Distance du point de contact du poids de la voiture (frontière externe)
-        d = sqrt((tempX-x0)*(tempX-x0) + (y-rOuter)*(y-rOuter));
-        if (d < dOuter) {
-            double a = (-2*h + 2*hOuter)/(dOuter*dOuter*dOuter);
-            double b = (3*h  - 3*hOuter)/(dOuter*dOuter);
-            double c = 0;
-            hfinal = fmin(hfinal,a*d*d*d + b*d*d + c*d + hOuter); }
-    }
+        hfinal = +a*d*d*d + b*d*d + c*d + hOuter;}
 
     return hfinal;
 
@@ -434,7 +408,6 @@ void geoMeshGenerate() {
     double x = theGeometry->xCenter;
     double y = theGeometry->yCenter;
     
-    double rInner = theGeometry->rInner;
     double rOuter = theGeometry->rOuter;
  
 //
@@ -446,19 +419,8 @@ void geoMeshGenerate() {
  
     int ierr;
     int idOuter = gmshModelOccAddDisk(x, y, 0.0, rOuter, rOuter, -1, NULL, 0, NULL, 0, &ierr); 
-    int idInner = gmshModelOccAddDisk(x, y, 0.0, rInner, rInner, -1, NULL, 0, NULL, 0, &ierr);
 
-    // Création du rectangle pour soustraire la moitié du cercle
-    double rectWidth = 2 * rOuter; // Largeur du rectangle
-    double rectHeight = rOuter;   // Hauteur du rectangle
-    int idRect = gmshModelOccAddRectangle(x - 0.1, y-rOuter-0.05, 0.0, 0.2, 0.06, -1, 0.0, &ierr);
-
-    // Soustraction du rectangle du cercle
     int outer[] = {2, idOuter};
-    int inner[] = {2, idInner};
-    int rect[] = {2, idRect};
-    gmshModelOccCut(outer, 2, rect, 2, NULL, NULL, NULL, NULL, NULL, -1, 1, 1, &ierr);
-    gmshModelOccCut(outer, 2, inner, 2, NULL, NULL, NULL, NULL, NULL, -1, 1, 1, &ierr);
     gmshModelOccSynchronize(&ierr);
 
     if (theGeometry->elementType == FEM_QUAD) {
@@ -1016,10 +978,18 @@ femProblem* femElasticityRead(femGeo* theGeometry, const char *filename)
                 boundaryType = DIRICHLET_X;
             } else if (strncasecmp(type, "DIRICHLET_Y", 11) == 0) {
                 boundaryType = DIRICHLET_Y;
+            } else if (strncasecmp(type, "DIRICHLET_N", 11) == 0) {
+                boundaryType = DIRICHLET_N;
+            } else if (strncasecmp(type, "DIRICHLET_T", 11) == 0) {
+                boundaryType = DIRICHLET_T;
             } else if (strncasecmp(type, "NEUMANN_X", 9) == 0) {
                 boundaryType = NEUMANN_X;
             } else if (strncasecmp(type, "NEUMANN_Y", 9) == 0) {
                 boundaryType = NEUMANN_Y;
+            } else if (strncasecmp(type, "NEUMANN_N", 9) == 0) {
+                boundaryType = NEUMANN_N;
+            } else if (strncasecmp(type, "NEUMANN_T", 9) == 0) {
+                boundaryType = NEUMANN_T;
             } else {
                 Error("Unknown boundary condition type");
             }
@@ -1153,6 +1123,10 @@ void femElasticityWrite(femProblem *theProblem, const char *filename) {
                     bc->domain->name,
                     bc->type == DIRICHLET_X ? "DIRICHLET_X" :
                     bc->type == DIRICHLET_Y ? "DIRICHLET_Y" :
+                    bc->type == DIRICHLET_N ? "DIRICHLET_N" :
+                    bc->type == DIRICHLET_T ? "DIRICHLET_T" :
+                    bc->type == NEUMANN_N ? "NEUMANN_N" :
+                    bc->type == NEUMANN_T ? "NEUMANN_T" :
                     bc->type == NEUMANN_X ? "NEUMANN_X" : "NEUMANN_Y",
                     bc->value);
         } else {

@@ -26,7 +26,7 @@
 #define MAXNAME 256
 
 typedef enum {FEM_TRIANGLE,FEM_QUAD,FEM_EDGE} femElementType;
-typedef enum {DIRICHLET_X,DIRICHLET_Y,NEUMANN_X,NEUMANN_Y} femBoundaryType;
+typedef enum {DIRICHLET_X,DIRICHLET_Y,DIRICHLET_T,DIRICHLET_N,NEUMANN_Y,NEUMANN_X,NEUMANN_T,NEUMANN_N} femBoundaryType;
 typedef enum {PLANAR_STRESS,PLANAR_STRAIN,AXISYM} femElasticCase;
 typedef enum {FEM_NO,FEM_XNUM,FEM_YNUM} femRenumType;
 typedef enum {SOLVEUR_PLEIN, SOLVEUR_BANDE, GRADIENTS_CONJUGUES} femSolverType;
@@ -58,11 +58,14 @@ typedef struct {
     int nElem;
     int *elem;
     char name[MAXNAME];
+    double *tangentes;  // utilisés pour les conditions normales et tangentes
+    double *normales;
+    int n_t_malloced;   // Utilisé pour voir si normales et tangents ont déjà été calculées sur ce domaine !
+    int n_t_matrix;     //utilisé pour voir si la matrice a été adaptée, ds le cas de conditions DIRICHLET N-T
 } femDomain;
 
 typedef struct {
     double xCenter, yCenter;
-    double rInner, dInner, hInner;
     double rOuter, dOuter, hOuter;
     double h;
     femElementType elementType;
