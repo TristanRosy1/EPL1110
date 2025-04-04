@@ -39,6 +39,13 @@ typedef struct {
 } femNodes;
 
 typedef struct {
+    double *B;
+    double **A;        
+    int size;
+    int band;        
+} femBandSystem;
+
+typedef struct {
     int nLocalNode;
     int nElem;
     int *elem;

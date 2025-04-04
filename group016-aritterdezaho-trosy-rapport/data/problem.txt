@@ -1,16 +1,14 @@
 Elasticity Problem Details:
-E (Young's Modulus): 5.000000e+06
+E (Young's Modulus): 2.000000e+06
 nu (Poisson's Ratio): 4.900000e-01
-rho (Density): 1.100000e+03
+rho (Density): 9.020000e+03
 g (Gravity): 9.810000e+00
 Type: Planar Stress
 
 Boundary Conditions:
-  Domain: !, Type: NEUMANN_Y, Value: 4.637887e-310
-  Domain: Å, Type: NEUMANN_Y, Value: 4.637887e-310
-  Domain: , Type: NEUMANN_Y, Value: 4.637887e-310
-  Domain: Q, Type: NEUMANN_Y, Value: 4.637887e-310
-  Domain: A, Type: NEUMANN_Y, Value: 4.637887e-310
-  Domain: ·, Type: NEUMANN_Y, Value: 4.637887e-310
-  Domain: !, Type: NEUMANN_Y, Value: 3.952525e-322
-  Domain: ë, Type: NEUMANN_Y, Value: 1.630417e-322
+  Domain: ExternalBoundary, Type: NEUMANN_Y, Value: -2.943000e+03
+  Domain: ExternalBoundary, Type: NEUMANN_Y, Value: 2.943000e+03
+  Domain: InternalBoundary, Type: NEUMANN_X, Value: 2.000000e+05
+  Domain: InternalBoundary, Type: NEUMANN_Y, Value: 2.000000e+05
+  Domain: InternalBoundary, Type: DIRICHLET_X, Value: 0.000000e+00
+  Domain: InternalBoundary, Type: DIRICHLET_Y, Value: 0.000000e+00

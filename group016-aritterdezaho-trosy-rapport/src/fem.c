@@ -91,9 +91,13 @@ void geoMeshImport()
     theEdges->nodes = theNodes;
     theEdges->nElem = nElem;  
     theEdges->elem = malloc(sizeof(int)*2*theEdges->nElem);
-    for (int i = 0; i < theEdges->nElem; i++)
-        for (int j = 0; j < theEdges->nLocalNode; j++)
+    theEdges->number = malloc(sizeof(int)*theEdges->nElem);
+    for (int i = 0; i < theEdges->nElem; i++){
+        theEdges->number[i] = elem[i]-1; // GMSH starts at 1
+        for (int j = 0; j < theEdges->nLocalNode; j++){
             theEdges->elem[2*i+j] = node[2*i+j]-1;  
+        }
+    }
     theGeometry.theEdges = theEdges;
     int shiftEdges = elem[0];
     gmshFree(node);
@@ -108,9 +112,13 @@ void geoMeshImport()
       theElements->nodes = theNodes;
       theElements->nElem = nElem;  
       theElements->elem = malloc(sizeof(int)*3*theElements->nElem);
-      for (int i = 0; i < theElements->nElem; i++)
-          for (int j = 0; j < theElements->nLocalNode; j++)
-              theElements->elem[3*i+j] = node[3*i+j]-1;  
+        theElements->number = malloc(sizeof(int)*theElements->nElem);
+      for (int i = 0; i < theElements->nElem; i++){
+        theElements->number[i] = elem[i]-1; // GMSH starts at 1
+        for (int j = 0; j < theElements->nLocalNode; j++){
+            theElements->elem[3*i+j] = node[3*i+j]-1;  
+        }
+      }   
       theGeometry.theElements = theElements;
       gmshFree(node);
       gmshFree(elem);
@@ -258,65 +266,87 @@ void geoMeshWrite(const char *filename)
 
 void geoMeshRead(const char *filename) 
 {
-   FILE* file = fopen(filename,"r");
-   
-   int trash, *elem;
-   
-   femNodes *theNodes = malloc(sizeof(femNodes));
-   theGeometry.theNodes = theNodes;
-   ErrorScan(fscanf(file, "Number of nodes %d \n", &theNodes->nNodes));
-   theNodes->X = malloc(sizeof(double)*(theNodes->nNodes));
-   theNodes->Y = malloc(sizeof(double)*(theNodes->nNodes));
-   for (int i = 0; i < theNodes->nNodes; i++) {
-       ErrorScan(fscanf(file,"%d : %le %le \n",&trash,&theNodes->X[i],&theNodes->Y[i]));} 
+    FILE* file = fopen(filename,"r");
+    if (file == NULL) {
+        Error("Cannot open file for reading");
+    }
 
-   femMesh *theEdges = malloc(sizeof(femMesh));
-   theGeometry.theEdges = theEdges;
-   theEdges->nLocalNode = 2;
-   theEdges->nodes = theNodes;
-   ErrorScan(fscanf(file, "Number of edges %d \n", &theEdges->nElem));
-   theEdges->elem = malloc(sizeof(int)*theEdges->nLocalNode*theEdges->nElem);
-   for(int i=0; i < theEdges->nElem; ++i) {
+    int trash, *elem;
+
+    femNodes *theNodes = malloc(sizeof(femNodes));
+    theGeometry.theNodes = theNodes;
+    ErrorScan(fscanf(file, "Number of nodes %d \n", &theNodes->nNodes));
+    theNodes->X = malloc(sizeof(double) * theNodes->nNodes);
+    theNodes->Y = malloc(sizeof(double) * theNodes->nNodes);
+    for (int i = 0; i < theNodes->nNodes; i++) {
+        ErrorScan(fscanf(file, "%d : %le %le \n", &trash, &theNodes->X[i], &theNodes->Y[i]));
+    }
+
+    femMesh *theEdges = malloc(sizeof(femMesh));
+    theGeometry.theEdges = theEdges;
+    theEdges->nLocalNode = 2;
+    theEdges->nodes = theNodes;
+    ErrorScan(fscanf(file, "Number of edges %d \n", &theEdges->nElem));
+    if (theEdges->nElem <= 0) {
+        Error("Invalid number of edges");
+    }
+
+    theEdges->elem = malloc(sizeof(int) * theEdges->nLocalNode * theEdges->nElem);
+
+    theEdges->number = malloc(sizeof(int) * theEdges->nElem);
+
+    for (int i = 0; i < theEdges->nElem; ++i) {
         elem = theEdges->elem;
-        ErrorScan(fscanf(file, "%6d : %6d %6d \n", &trash,&elem[2*i],&elem[2*i+1])); }
-  
-   femMesh *theElements = malloc(sizeof(femMesh));
-   theGeometry.theElements = theElements;
-   theElements->nLocalNode = 0;
-   theElements->nodes = theNodes;
-   char elementType[MAXNAME];  
-   ErrorScan(fscanf(file, "Number of %s %d \n",elementType,&theElements->nElem));  
-   if (strncasecmp(elementType,"triangles",MAXNAME) == 0) {
-      theElements->nLocalNode = 3;
-      theElements->elem = malloc(sizeof(int)*theElements->nLocalNode*theElements->nElem);
-      for(int i=0; i < theElements->nElem; ++i) {
-          elem = theElements->elem;
-          ErrorScan(fscanf(file, "%6d : %6d %6d %6d \n", 
-                    &trash,&elem[3*i],&elem[3*i+1],&elem[3*i+2])); }}
-   if (strncasecmp(elementType,"quads",MAXNAME) == 0) {
-      theElements->nLocalNode = 4;
-      theElements->elem = malloc(sizeof(int)*theElements->nLocalNode*theElements->nElem);
-      for(int i=0; i < theElements->nElem; ++i) {
-          elem = theElements->elem;
-          ErrorScan(fscanf(file, "%6d : %6d %6d %6d %6d \n", 
-                    &trash,&elem[4*i],&elem[4*i+1],&elem[4*i+2],&elem[4*i+3])); }}
-           
-   ErrorScan(fscanf(file, "Number of domains %d\n", &theGeometry.nDomains));
-   int nDomains = theGeometry.nDomains;
-   theGeometry.theDomains = malloc(sizeof(femDomain*)*nDomains);
-   for (int iDomain = 0; iDomain < nDomains; iDomain++) {
-      femDomain *theDomain = malloc(sizeof(femDomain)); 
-      theGeometry.theDomains[iDomain] = theDomain;
-      theDomain->mesh = theEdges; 
-      ErrorScan(fscanf(file,"  Domain : %6d \n", &trash));
-      ErrorScan(fscanf(file,"  Name : %[^\n]s \n", (char*)&theDomain->name));
-      ErrorScan(fscanf(file,"  Number of elements : %6d\n", &theDomain->nElem));
-      theDomain->elem = malloc(sizeof(int)*2*theDomain->nElem); 
-      for (int i=0; i < theDomain->nElem; i++){
-          ErrorScan(fscanf(file,"%6d",&theDomain->elem[i]));
-          if ((i+1) != theDomain->nElem  && (i+1) % 10 == 0) ErrorScan(fscanf(file,"\n")); }}
-    
-   fclose(file);
+        int result = fscanf(file, "%6d : %6d %6d \n", &theEdges->number[i], &elem[2 * i], &elem[2 * i + 1]);
+    }
+
+    femMesh *theElements = malloc(sizeof(femMesh));
+
+    theGeometry.theElements = theElements;
+    theElements->nLocalNode = 0;
+    theElements->nodes = theNodes;
+    char elementType[MAXNAME];
+    ErrorScan(fscanf(file, "Number of %s %d \n", elementType, &theElements->nElem));
+
+    if (strncasecmp(elementType, "triangles", MAXNAME) == 0) {
+        theElements->nLocalNode = 3;
+        theElements->elem = malloc(sizeof(int) * theElements->nLocalNode * theElements->nElem);
+        theElements->number = malloc(sizeof(int) * theElements->nElem); 
+        for (int i = 0; i < theElements->nElem; ++i) {
+            elem = theElements->elem;
+            ErrorScan(fscanf(file, "%6d : %6d %6d %6d \n", &theElements->number[i], &elem[3 * i], &elem[3 * i + 1], &elem[3 * i + 2]));
+        }
+    }
+    if (strncasecmp(elementType, "quads", MAXNAME) == 0) {
+        theElements->nLocalNode = 4;
+        theElements->elem = malloc(sizeof(int) * theElements->nLocalNode * theElements->nElem);
+        theElements->number = malloc(sizeof(int) * theElements->nElem); 
+        for (int i = 0; i < theElements->nElem; ++i) {
+            elem = theElements->elem;
+            ErrorScan(fscanf(file, "%6d : %6d %6d %6d %6d \n", &theElements->number[i], &elem[4 * i], &elem[4 * i + 1], &elem[4 * i + 2], &elem[4 * i + 3]));
+        }
+    }
+
+    ErrorScan(fscanf(file, "Number of domains %d\n", &theGeometry.nDomains));
+    int nDomains = theGeometry.nDomains;
+    theGeometry.theDomains = malloc(sizeof(femDomain *) * nDomains);
+    for (int iDomain = 0; iDomain < nDomains; iDomain++) {
+        femDomain *theDomain = malloc(sizeof(femDomain));
+        theGeometry.theDomains[iDomain] = theDomain;
+        theDomain->mesh = theEdges;
+        ErrorScan(fscanf(file, "  Domain : %6d \n", &trash));
+        ErrorScan(fscanf(file, "  Name : %[^\n]s \n", (char *)&theDomain->name));
+        ErrorScan(fscanf(file, "  Number of elements : %6d\n", &theDomain->nElem));
+        theDomain->elem = malloc(sizeof(int) * 2 * theDomain->nElem);
+        for (int i = 0; i < theDomain->nElem; i++) {
+            ErrorScan(fscanf(file, "%6d", &theDomain->elem[i]));
+            if ((i + 1) != theDomain->nElem && (i + 1) % 10 == 0) {
+                ErrorScan(fscanf(file, "\n"));
+            }
+        }
+    }
+
+    fclose(file);
 }
 
 void geoSetDomainName(int iDomain, char *name) 
@@ -329,11 +359,20 @@ void geoSetDomainName(int iDomain, char *name)
 int geoGetDomain(char *name)
 {
     int theIndex = -1;
-    int nDomains = theGeometry.nDomains;
-    for (int iDomain = 0; iDomain < nDomains; iDomain++) {
+    for (int iDomain = 0; iDomain < theGeometry.nDomains; iDomain++) {
         femDomain *theDomain = theGeometry.theDomains[iDomain];
-        if (strncasecmp(name,theDomain->name,MAXNAME) == 0)
-            theIndex = iDomain;  }
+        printf("Domaine défini [%d]: %s\n", iDomain, theDomain->name);
+
+        if (strncasecmp(name, theDomain->name, MAXNAME) == 0) {
+            theIndex = iDomain;
+            break; // Domaine trouvé, on peut sortir de la boucle
+        }
+    }
+
+    if (theIndex == -1) {
+        printf("Erreur : Domaine %s non trouvé !\n", name);
+    }
+
     return theIndex;
             
 }
@@ -365,7 +404,7 @@ double geoSize(double x, double y){
         hfinal = a*d*d*d + b*d*d + c*d + hInner; 
     }
 
-    double tempX = x*x*x*x;
+    double tempX = fabs(x - x0);
 
     if (y < 0){
         // Distance du point de contact de la réaction du sol (frontière externe)
@@ -800,6 +839,9 @@ void femElasticityFree(femProblem *theProblem)
     femDiscreteFree(theProblem->space);
     femIntegrationFree(theProblem->ruleEdge);
     femDiscreteFree(theProblem->spaceEdge);
+    for (int i = 0; i < theProblem->nBoundaryConditions; i++){
+        free(theProblem->conditions[i]);
+    }
     free(theProblem->conditions);
     free(theProblem->constrainedNodes);
     free(theProblem->soluce);
@@ -900,143 +942,102 @@ double femElasticityIntegrate(femProblem *theProblem, double (*f)(double x, doub
 
 }
 
-
-
-
-double femMin(double *x, int n) 
+femProblem* femElasticityRead(femGeo* theGeometry, const char *filename) 
 {
-    double myMin = x[0];
-    int i;
-    for (i=1 ;i < n; i++) 
-        myMin = fmin(myMin,x[i]);
-    return myMin;
-}
-
-double femMax(double *x, int n) 
-{
-    double myMax = x[0];
-    int i;
-    for (i=1 ;i < n; i++) 
-        myMax = fmax(myMax,x[i]);
-    return myMax;
-}
-
-
-void femError(char *text, int line, char *file)                                  
-{ 
-    printf("\n-------------------------------------------------------------------------------- ");
-    printf("\n  Error in %s at line %d : \n  %s\n", file, line, text);
-    printf("--------------------------------------------------------------------- Yek Yek !! \n\n");
-    exit(69);                                                 
-}
-
-void femErrorGmsh(int ierr, int line, char *file)                                  
-{ 
-    if (ierr == 0)  return;
-    printf("\n-------------------------------------------------------------------------------- ");
-    printf("\n  Error in %s at line %d : \n  error code returned by gmsh %d\n", file, line, ierr);
-    printf("--------------------------------------------------------------------- Yek Yek !! \n\n");
-    gmshFinalize(NULL);                                        
-    exit(69);                                                 
-}
-
-void femErrorScan(int test, int line, char *file)                                  
-{ 
-    if (test >= 0)  return;
-    
-    printf("\n-------------------------------------------------------------------------------- ");
-    printf("\n  Error in fscanf or fgets in %s at line %d : \n", file, line);
-    printf("--------------------------------------------------------------------- Yek Yek !! \n\n");   
-    exit(69);                                       
-}
-
-void femWarning(char *text, int line, char *file)                                  
-{ 
-    printf("\n-------------------------------------------------------------------------------- ");
-    printf("\n  Warning in %s at line %d : \n  %s\n", file, line, text);
-    printf("--------------------------------------------------------------------- Yek Yek !! \n\n");                                              
-}
-
-femProblem* femElasticityRead(femGeo* theGeometry, const char *filename) {
     FILE* file = fopen(filename, "r");
     if (file == NULL) {
-        Error("Cannot open the file for reading");
+        Error("Cannot open file for reading");
     }
 
-    femProblem* theProblem = malloc(sizeof(femProblem));
-    theProblem->geometry = theGeometry;
-
-    char line[MAXNAME];
-    ErrorScan(fgets(line, MAXNAME, file)); // Skip the first line
-    ErrorScan(fscanf(file, "   Young modulus   E   =  %le [N/m2]\n", &theProblem->E));
-    ErrorScan(fscanf(file, "   Poisson's ratio nu  =  %le [-]\n", &theProblem->nu));
-    ErrorScan(fscanf(file, "   Density         rho =  %le [kg/m3]\n", &theProblem->rho));
-    ErrorScan(fscanf(file, "   Gravity         g   =  %le [m/s2]\n", &theProblem->g));
-
-    ErrorScan(fgets(line, MAXNAME, file)); // Read the problem type line
-    if (strstr(line, "Planar stresses formulation") != NULL) {
-        theProblem->planarStrainStress = PLANAR_STRESS;
-    } else if (strstr(line, "Planar strains formulation") != NULL) {
-        theProblem->planarStrainStress = PLANAR_STRAIN;
-    } else if (strstr(line, "Axisymmetric formulation") != NULL) {
-        theProblem->planarStrainStress = AXISYM;
-    } else {
-        Error("Unknown problem type");
-    }
-
-    if (theProblem->planarStrainStress == PLANAR_STRESS) {
-        theProblem->A = theProblem->E / (1 - theProblem->nu * theProblem->nu);
-        theProblem->B = theProblem->E * theProblem->nu / (1 - theProblem->nu * theProblem->nu);
-        theProblem->C = theProblem->E / (2 * (1 + theProblem->nu));
-    } else if (theProblem->planarStrainStress == PLANAR_STRAIN || theProblem->planarStrainStress == AXISYM) {
-        theProblem->A = theProblem->E * (1 - theProblem->nu) / ((1 + theProblem->nu) * (1 - 2 * theProblem->nu));
-        theProblem->B = theProblem->E * theProblem->nu / ((1 + theProblem->nu) * (1 - 2 * theProblem->nu));
-        theProblem->C = theProblem->E / (2 * (1 + theProblem->nu));
-    }
-
-    ErrorScan(fgets(line, MAXNAME, file)); // Skip the boundary conditions header
-    int nBoundaryConditions = 0;
+    femProblem *theProblem = malloc(sizeof(femProblem));
+    theProblem->nBoundaryConditions = 0;
     theProblem->conditions = NULL;
 
-    while (fgets(line, MAXNAME, file) != NULL) {
-        femBoundaryCondition* theCondition = malloc(sizeof(femBoundaryCondition));
-        char domainName[MAXNAME];
-        char boundaryType[MAXNAME];
-        double value;
+    int size = 2*theGeometry->theNodes->nNodes;
+    theProblem->constrainedNodes = malloc(size*sizeof(int));
+    theProblem->soluce = malloc(size*sizeof(double));
+    theProblem->residuals = malloc(size*sizeof(double));
+    for (int i=0; i < size; i++) {
+        theProblem->constrainedNodes[i] = -1;
+        theProblem->soluce[i] = 0.0;
+        theProblem->residuals[i] = 0.0;}
 
-        // Adjust parsing to handle extra spaces or formatting inconsistencies
-        if (sscanf(line, " %s : imposing %le as the %[^\n]", domainName, &value, boundaryType) != 3) {
-            Error("Error reading boundary condition");
+        
+    theProblem->geometry = theGeometry;
+    if (theGeometry->theElements->nLocalNode == 3) {
+        theProblem->space = femDiscreteCreate(3, FEM_TRIANGLE);
+        theProblem->rule = femIntegrationCreate(3, FEM_TRIANGLE);
+    }
+    if (theGeometry->theElements->nLocalNode == 4) {
+        theProblem->space = femDiscreteCreate(4, FEM_QUAD);
+        theProblem->rule = femIntegrationCreate(4, FEM_QUAD);
+    }
+    theProblem->spaceEdge    = femDiscreteCreate(2,FEM_EDGE);
+    theProblem->ruleEdge     = femIntegrationCreate(2,FEM_EDGE); 
+    theProblem->system = femFullSystemCreate(size);
+
+    char line[MAXNAME];
+    char domain[MAXNAME];
+    char type[MAXNAME];
+    double value;
+    int domIndex = 0;
+
+    while (fgets(line, sizeof(line), file)) {
+        if (strncasecmp(line, "E (Young's Modulus):", 20) == 0) {
+            sscanf(line, "E (Young's Modulus): %le", &theProblem->E);
+        } else if (strncasecmp(line, "nu (Poisson's Ratio):", 21) == 0) {
+            sscanf(line, "nu (Poisson's Ratio): %le", &theProblem->nu);
+        } else if (strncasecmp(line, "rho (Density):", 14) == 0) {
+            sscanf(line, "rho (Density): %le", &theProblem->rho);
+        } else if (strncasecmp(line, "g (Gravity):", 12) == 0) {
+            sscanf(line, "g (Gravity): %le", &theProblem->g);
+        } else if (strncasecmp(line, "Type:", 5) == 0) {
+            char problemType[MAXNAME];
+            sscanf(line, "Type: %[^\n]", problemType);
+            if (strncasecmp(problemType, "Planar Stress", 13) == 0) {
+                theProblem->planarStrainStress = PLANAR_STRESS;
+            } else if (strncasecmp(problemType, "Planar Strain", 13) == 0) {
+                theProblem->planarStrainStress = PLANAR_STRAIN;
+            } else if (strncasecmp(problemType, "Axisymmetric", 12) == 0) {
+                theProblem->planarStrainStress = AXISYM;
+            }
+        } else if (strncasecmp(line, "  Domain:", 9) == 0) {
+            sscanf(line, "  Domain: %[^,], Type: %[^,], Value: %le", domain, type, &value);
+            femBoundaryType boundaryType;
+            if (strncasecmp(type, "DIRICHLET_X", 11) == 0) {
+                boundaryType = DIRICHLET_X;
+            } else if (strncasecmp(type, "DIRICHLET_Y", 11) == 0) {
+                boundaryType = DIRICHLET_Y;
+            } else if (strncasecmp(type, "NEUMANN_X", 9) == 0) {
+                boundaryType = NEUMANN_X;
+            } else if (strncasecmp(type, "NEUMANN_Y", 9) == 0) {
+                boundaryType = NEUMANN_Y;
+            } else {
+                Error("Unknown boundary condition type");
+            }
+            int iDomain = geoGetDomain(domain);
+            if (iDomain == -1) {
+                printf("Domain '%s' not found.\n", domain);
+            }
+            femElasticityAddBoundaryCondition(theProblem, domain, boundaryType, value);
         }
-
-        int iDomain = geoGetDomain(domainName);
-        if (iDomain == -1) {
-            Error("Undefined domain in boundary condition");
-        }
-
-        theCondition->domain = theGeometry->theDomains[iDomain];
-        theCondition->value = value;
-
-        if (strstr(boundaryType, "horizontal displacement") != NULL) {
-            theCondition->type = DIRICHLET_X;
-        } else if (strstr(boundaryType, "vertical displacement") != NULL) {
-            theCondition->type = DIRICHLET_Y;
-        } else if (strstr(boundaryType, "horizontal force density") != NULL) {
-            theCondition->type = NEUMANN_X;
-        } else if (strstr(boundaryType, "vertical force density") != NULL) {
-            theCondition->type = NEUMANN_Y;
-        } else {
-            Error("Unknown boundary condition type");
-        }
-
-        nBoundaryConditions++;
-        theProblem->conditions = realloc(theProblem->conditions, nBoundaryConditions * sizeof(femBoundaryCondition*));
-        theProblem->conditions[nBoundaryConditions - 1] = theCondition;
     }
 
-    theProblem->nBoundaryConditions = nBoundaryConditions;
-    fclose(file);
+    int iCase = theProblem->planarStrainStress;
+    double E = theProblem->E;
+    double nu = theProblem->nu;
 
+    if (iCase == PLANAR_STRESS) {
+        theProblem->A = E / (1 - nu * nu);
+        theProblem->B = E * nu / (1 - nu * nu);
+        theProblem->C = E / (2 * (1 + nu));
+    } else if (iCase == PLANAR_STRAIN || iCase == AXISYM) {
+        theProblem->A = E * (1 - nu) / ((1 + nu) * (1 - 2 * nu));
+        theProblem->B = E * nu / ((1 + nu) * (1 - 2 * nu));
+        theProblem->C = E / (2 * (1 + nu));
+    }
+
+    fclose(file);
     return theProblem;
 }
 
@@ -1128,22 +1129,86 @@ void femElasticityWrite(femProblem *theProblem, const char *filename) {
     }
 
     fprintf(file, "Elasticity Problem Details:\n");
-    fprintf(file, "E (Young's Modulus): %e\n", theProblem->E);
-    fprintf(file, "nu (Poisson's Ratio): %e\n", theProblem->nu);
-    fprintf(file, "rho (Density): %e\n", theProblem->rho);
-    fprintf(file, "g (Gravity): %e\n", theProblem->g);
-    fprintf(file, "Type: %s\n", theProblem->planarStrainStress == PLANAR_STRESS ? "Planar Stress" : "Planar Strain");
+    fprintf(file, "E (Young's Modulus): %.6e\n", theProblem->E);
+    fprintf(file, "nu (Poisson's Ratio): %.6e\n", theProblem->nu);
+    fprintf(file, "rho (Density): %.6e\n", theProblem->rho);
+    fprintf(file, "g (Gravity): %.6e\n", theProblem->g);
+    fprintf(file, "Type: %s\n", 
+            theProblem->planarStrainStress == PLANAR_STRESS ? "Planar Stress" :
+            theProblem->planarStrainStress == PLANAR_STRAIN ? "Planar Strain" : "Axisymmetric");
 
     fprintf(file, "\nBoundary Conditions:\n");
     for (int i = 0; i < theProblem->nBoundaryConditions; i++) {
-        femBoundaryCondition *bc = &theProblem->conditions[i];
-        fprintf(file, "  Domain: %s, Type: %s, Value: %e\n",
-                bc->domain->name,
-                bc->type == DIRICHLET_X ? "DIRICHLET_X" :
-                bc->type == DIRICHLET_Y ? "DIRICHLET_Y" :
-                bc->type == NEUMANN_X ? "NEUMANN_X" : "NEUMANN_Y",
-                bc->value);
+        femBoundaryCondition *bc = theProblem->conditions[i];
+        if (bc && bc->domain && bc->domain->name) {
+            fprintf(file, "  Domain: %s, Type: %s, Value: %.6e\n",
+                    bc->domain->name,
+                    bc->type == DIRICHLET_X ? "DIRICHLET_X" :
+                    bc->type == DIRICHLET_Y ? "DIRICHLET_Y" :
+                    bc->type == NEUMANN_X ? "NEUMANN_X" : "NEUMANN_Y",
+                    bc->value);
+        } else {
+            fprintf(file, "  Invalid boundary condition detected.\n");
+        }
     }
 
     fclose(file);
 }
+
+
+
+
+double femMin(double *x, int n) 
+{
+    double myMin = x[0];
+    int i;
+    for (i=1 ;i < n; i++) 
+        myMin = fmin(myMin,x[i]);
+    return myMin;
+}
+
+double femMax(double *x, int n) 
+{
+    double myMax = x[0];
+    int i;
+    for (i=1 ;i < n; i++) 
+        myMax = fmax(myMax,x[i]);
+    return myMax;
+}
+
+
+void femError(char *text, int line, char *file)                                  
+{ 
+    printf("\n-------------------------------------------------------------------------------- ");
+    printf("\n  Error in %s at line %d : \n  %s\n", file, line, text);
+    printf("\n-------------------------------------------------------------------------------- ");
+    exit(69);                                                 
+}
+
+void femErrorGmsh(int ierr, int line, char *file)                                  
+{ 
+    if (ierr == 0)  return;
+    printf("\n-------------------------------------------------------------------------------- ");
+    printf("\n  Error in %s at line %d : \n  error code returned by gmsh %d\n", file, line, ierr);
+    printf("\n-------------------------------------------------------------------------------- ");
+    gmshFinalize(NULL);                                        
+    exit(69);                                                 
+}
+
+void femErrorScan(int test, int line, char *file)                                  
+{ 
+    if (test >= 0)  return;
+    
+    printf("\n-------------------------------------------------------------------------------- ");
+    printf("\n  Error in fscanf or fgets in %s at line %d : \n", file, line);
+    printf("\n-------------------------------------------------------------------------------- ");
+    exit(69);                                       
+}
+
+void femWarning(char *text, int line, char *file)                                  
+{ 
+    printf("\n-------------------------------------------------------------------------------- ");
+    printf("\n  Warning in %s at line %d : \n  %s\n", file, line, text);
+    printf("\n-------------------------------------------------------------------------------- ");
+}
+
