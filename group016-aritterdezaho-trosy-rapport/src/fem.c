@@ -445,13 +445,21 @@ void geoMeshGenerate() {
 //
  
     int ierr;
-    int idInner = gmshModelOccAddDisk(x,y,0.0,rInner,rInner,-1,NULL,0,NULL,0,&ierr); 
-    int idOuter = gmshModelOccAddDisk(x,y,0.0,rOuter,rOuter,-1,NULL,0,NULL,0,&ierr); 
-    
-    int inner[] = {2,idInner};
-    int outer[] = {2,idOuter};
-    gmshModelOccCut(outer,2,inner ,2,NULL,NULL,NULL,NULL,NULL,-1,1,1,&ierr);
-    gmshModelOccSynchronize(&ierr); 
+    int idOuter = gmshModelOccAddDisk(x, y, 0.0, rOuter, rOuter, -1, NULL, 0, NULL, 0, &ierr); 
+    int idInner = gmshModelOccAddDisk(x, y, 0.0, rInner, rInner, -1, NULL, 0, NULL, 0, &ierr);
+
+    // Création du rectangle pour soustraire la moitié du cercle
+    double rectWidth = 2 * rOuter; // Largeur du rectangle
+    double rectHeight = rOuter;   // Hauteur du rectangle
+    int idRect = gmshModelOccAddRectangle(x - 0.1, y-rOuter-0.05, 0.0, 0.2, 0.06, -1, 0.0, &ierr);
+
+    // Soustraction du rectangle du cercle
+    int outer[] = {2, idOuter};
+    int inner[] = {2, idInner};
+    int rect[] = {2, idRect};
+    gmshModelOccCut(outer, 2, rect, 2, NULL, NULL, NULL, NULL, NULL, -1, 1, 1, &ierr);
+    gmshModelOccCut(outer, 2, inner, 2, NULL, NULL, NULL, NULL, NULL, -1, 1, 1, &ierr);
+    gmshModelOccSynchronize(&ierr);
 
     if (theGeometry->elementType == FEM_QUAD) {
         gmshOptionSetNumber("Mesh.SaveAll",1,&ierr);
@@ -465,7 +473,7 @@ void geoMeshGenerate() {
     if (theGeometry->elementType == FEM_TRIANGLE) {
         gmshOptionSetNumber("Mesh.SaveAll",1,&ierr);
         gmshModelMeshGenerate(2,&ierr);  }
-
+    
     return;
 }
 

@@ -253,33 +253,77 @@ void femElasticityAssembleNeumann(femProblem *theProblem)
     }
 }
 
-void femApplyBoundaryConditions(femProblem *theProblem)
-{
-    femFullSystem *theSystem = theProblem->system;
-    femMesh *theMesh = theProblem->geometry->theElements;
-    double **A = theSystem->A;
-    double *B = theSystem->B;
-    int *theConstrainedNodes = theProblem->constrainedNodes;
+void femApplyBoundaryConditions(femProblem *theProblem) {
 
-    for (int i = 0; i < theSystem->size; i++) {
+    femFullSystem *theSystem = theProblem->system;
+    femMesh *theMesh         = theProblem->geometry->theElements;
+    double **A  = theSystem->A;
+    double *B   = theSystem->B;
+    int iCase   = theProblem->planarStrainStress;
+
+    for (int i = 0; i < theProblem->nBoundaryConditions; i++) {
+
+        femBoundaryCondition* cnd = theProblem->conditions[i];
+        femMesh * bndMesh = cnd->domain->mesh;
+        femBoundaryType bndType = cnd->type;
+        double * X = bndMesh->nodes->X;
+        double * Y = bndMesh->nodes->Y;
+        int * bndElem = cnd->domain->elem;
+        int nElem = cnd->domain->nElem;
+        int node0, node1;
+                   
+
+        if (cnd->type == NEUMANN_X || cnd->type == NEUMANN_Y) {
+            for (int j = 0; j < nElem; j++) {
+                node0 = bndMesh->elem[2 * bndElem[j]];
+                node1 = bndMesh->elem[2 * bndElem[j] + 1];                
+                double jac = 0.5 * sqrt( (X[node0] - X[node1]) *  (X[node0] - X[node1]) +
+                                    (Y[node0] - Y[node1]) * (Y[node0] - Y[node1]));
+
+                if (cnd->type == NEUMANN_X || cnd->type == NEUMANN_Y) {
+                    if (iCase == AXISYM) { // Prise en compte du cas axisymétrique
+                        
+                        // ce sont les deux valeurs prises par les fcts de formes, mais pas les fcts de formes
+                        double phi[2] = { (1+sqrt(3))/2, (1-sqrt(3))/2}; 
+                        double x[2] = {X[node0], X[node1]};
+                        double xLoc[2] = {x[0] * phi[1] + x[1] * phi[0], x[0] * phi[0] + x[1] * phi[1]};
+
+                        int shift = (cnd->type == NEUMANN_X ) ? 0 : 1;    
+                        node0 = theMesh->number[node0]; // renumérotation
+                        node1 = theMesh->number[node1];       
+                        B[2 * node0 + shift] += jac * cnd->value * phi[1] * xLoc[0] ; // premier point d'intégration
+                        B[2 * node0 + shift] += jac * cnd->value * phi[0] * xLoc[1] ; // deuxième point d'intégration
+
+                        B[2 * node1 + shift] += jac * cnd->value * phi[0] * xLoc[0] ; // premier point d'intégration
+                        B[2 * node1 + shift] += jac * cnd->value * phi[1] * xLoc[1] ; // deuxième point d'intégration                                                                             
+                    }
+
+                    else {
+                        node0 = theMesh->number[node0]; // renumérotation
+                        node1 = theMesh->number[node1];
+                        int shift = (cnd->type == NEUMANN_X ) ? 0 : 1;
+                        B[2 * node0 + shift] += jac * cnd->value;
+                        B[2 * node1 + shift] += jac * cnd->value;                      
+                    }
+                }
+
+            }
+        }
+    }
+    
+    // Conditions DIRICHLET X-Y
+    int *theConstrainedNodes = theProblem->constrainedNodes; // NB : ici nodes ne correspond pas à un noeud, mais à la composante x ou y
+    for (int i=0; i < theSystem->size; i++) {
         if (theConstrainedNodes[i] != -1) {
             double value = theProblem->conditions[theConstrainedNodes[i]]->value;
             femBoundaryType cndType = theProblem->conditions[theConstrainedNodes[i]]->type;
-            int shift = (cndType == DIRICHLET_X) ? 0 : 1;
-            int node = (i - shift) / 2;
-            int index = theMesh->number[node] * 2 + shift;
-
-            for (int j = 0; j < theSystem->size; j++) {
-                B[j] -= A[j][index] * value;
-                A[j][index] = 0.0;
+            if (cndType == DIRICHLET_X || cndType == DIRICHLET_Y) {
+                int shift = (cndType ==DIRICHLET_X) ? 0 : 1;
+                int node = (i - shift) / 2;
+                int index = theMesh->number[node] * 2 + shift;  // renumérotation
+                femFullSystemConstrain(theSystem, index,value); }
             }
-            for (int j = 0; j < theSystem->size; j++) {
-                A[index][j] = 0.0;
-            }
-            A[index][index] = 1.0;
-            B[index] = value;
         }
-    }
 }
 
 double* femBandSystemEliminate(femBandSystem* mySystem)
@@ -357,6 +401,11 @@ double *femElasticitySolve(femProblem *theProblem)
     femGeo *theGeometry = theProblem->geometry;
     femNodes *theNodes = theGeometry->theNodes;
     femMesh *theMesh = theGeometry->theElements;
+
+    femFullSystemInit(system);
+
+    // femElasticityAssembleElements(theProblem);
+    // femElasticityAssembleNeumann(theProblem);
 
     int nLocal = theMesh->nLocalNode;
     double x[nLocal], y[nLocal], phi[nLocal], dphidxsi[nLocal], dphideta[nLocal], dphidx[nLocal], dphidy[nLocal];

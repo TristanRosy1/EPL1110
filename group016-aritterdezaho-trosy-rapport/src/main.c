@@ -46,20 +46,23 @@ void createNewMesh(const char *filename, double (*sizeCallback)(double x, double
     // Generate and import the mesh
     geoMeshGenerate();
     geoMeshImport();
-    geoSetDomainName(1, "ExternalBoundary");
     geoSetDomainName(0, "InternalBoundary");
+    geoSetDomainName(1, "OuterBoundary2");
+    geoSetDomainName(3, "OuterBoundary1");
+    geoSetDomainName(4, "Bottom");
     geoMeshWrite(filename);
 }
 
+
 femProblem* createNewProblem(femGeo* theGeometry, const char *filename) {
-    double vMass = 1200; // mass of the vehicle in kg
+    double vMass = 12000; // mass of the vehicle in kg
     double wMass = vMass / 4; // mass distributed on one wheel
-    double E = 2e6; // Young's modulus in Pa
+    double E = 0.01e9; // Young's modulus in Pa
     double nu = 0.49; // Poisson's ratio
-    double rho = 9.02e3; // Density in kg/m³
+    double rho = 1100; // Density in kg/m³
     double g = 9.81;
 
-    femProblem* theProblem = femElasticityCreate(theGeometry, E, nu, rho, g, PLANAR_STRESS);
+    femProblem* theProblem = femElasticityCreate(theGeometry, E, nu, rho, g, AXISYM);
 
     // Weight of the car (force applied downward)
     double F_car = g * wMass;
@@ -68,10 +71,10 @@ femProblem* createNewProblem(femGeo* theGeometry, const char *filename) {
     // Internal air pressure
     double P_internal = 200000.0; // 200 kPa (2 bars)
 
-    femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", NEUMANN_Y, -F_car); // Force vers le bas aucune diff entre les 2 axes
-    femElasticityAddBoundaryCondition(theProblem, "ExternalBoundary", NEUMANN_Y, F_reaction); // Force vers le haut
-    femElasticityAddBoundaryCondition(theProblem, "InternalBoundary", NEUMANN_X, P_internal); // Pression interne (x) aucune diff entre les 2 axes
-    femElasticityAddBoundaryCondition(theProblem, "InternalBoundary", NEUMANN_Y, P_internal); // Pression interne (y)
+    femElasticityAddBoundaryCondition(theProblem, "OuterBoundary1", NEUMANN_Y, -F_car); // Force vers le bas aucune diff entre les 2 axes
+    //femElasticityAddBoundaryCondition(theProblem, "Arc", NEUMANN_Y, F_reaction); // Force vers le haut
+    //femElasticityAddBoundaryCondition(theProblem, "InternalBoundary", NEUMANN_X, P_internal); // Pression interne (x) aucune diff entre les 2 axes
+    //femElasticityAddBoundaryCondition(theProblem, "InternalBoundary", NEUMANN_Y, P_internal); // Pression interne (y)
 
     // for (int i = 0; i < theGeometry->theNodes->nNodes; i++) {
     //     double x = theGeometry->theNodes->X[i];
@@ -105,8 +108,10 @@ femProblem* createNewProblem(femGeo* theGeometry, const char *filename) {
     //femElasticityAddBoundaryCondition(theProblem, "RightBoundary", DIRICHLET_Y, 0.0);
 
     // condition domaine interieur
-    femElasticityAddBoundaryCondition(theProblem, "InternalBoundary", DIRICHLET_X, 0.0); // Bloque déplacement horizontal
-    femElasticityAddBoundaryCondition(theProblem, "InternalBoundary", DIRICHLET_Y, 0.0); // Bloque déplacement vertical
+    // femElasticityAddBoundaryCondition(theProblem, "BottomLeft", DIRICHLET_Y, 0.0); // Bloque déplacement horizontal
+    // femElasticityAddBoundaryCondition(theProblem, "BottomRight", DIRICHLET_Y, 0.0); // Bloque déplacement vertical
+    femElasticityAddBoundaryCondition(theProblem, "Bottom", DIRICHLET_X, 0.0); // Bloque déplacement horizontal
+    femElasticityAddBoundaryCondition(theProblem, "Bottom", DIRICHLET_Y, 0.0);
     femElasticityWrite(theProblem, filename);
     return theProblem;
 }
@@ -161,10 +166,9 @@ int main(int argc, char *argv[])
 
     geoInitialize();
     femGeo* theGeometry = geoGetGeometry();
-    //createNewMesh("../data/mesh.txt", sizeCallback); //  Décommenter cette ligne pour créer un nouveau maillage
-    geoMeshRead(meshFile); // Commenter cette ligne si tu décommente celle au dessus
+    createNewMesh("../data/mesh.txt", sizeCallback); //  Décommenter cette ligne pour créer un nouveau maillage
+    //geoMeshRead(meshFile); // Commenter cette ligne si tu décommente celle au dessus
     
-        
 //
 //  -2- Creation probleme 
 //  
@@ -191,18 +195,14 @@ int main(int argc, char *argv[])
 //
     
     femNodes *theNodes = theGeometry->theNodes;
-    double deformationFactor = 10;
+    double deformationFactor = 1;
     double *normDisplacement = malloc(theNodes->nNodes * sizeof(double));
     double *forcesX = malloc(theNodes->nNodes * sizeof(double));
     double *forcesY = malloc(theNodes->nNodes * sizeof(double));
-    //double *normForces = malloc(theNodes->nNodes * sizeof(double));
 
     
     for (int i=0; i<theNodes->nNodes; i++){
-        //double fx = theForces[2*i+0];
-        //double fy = theForces[2*i+1];
-
-        //normForces[i] = sqrt(fx*fx + fy*fy);
+        
         theNodes->X[i] += theSoluce[2*i+0]*deformationFactor; //partie que j ai modif
         theNodes->Y[i] += theSoluce[2*i+1]*deformationFactor;
         normDisplacement[i] = sqrt(theSoluce[2*i+0]*theSoluce[2*i+0] + 
