@@ -1,10 +1,5 @@
 /*
  *  fem.c
- *  Library for LEPL1110 : Finite Elements for dummies
- *
- *  Copyright (C) 2021 UCL-IMMC : Vincent Legat
- *  All rights reserved.
- *
  */
 
 #include "fem.h"
@@ -20,9 +15,6 @@ double geoGmshSize(int dim, int tag, double x, double y, double z, double lc, vo
 void geoInitialize() 
 {
     int ierr;
-    gmshInitialize(0, NULL, 1, 0, &ierr);                         ErrorGmsh(ierr);
-    gmshModelAdd("MyGeometry", &ierr);                            ErrorGmsh(ierr);
-    gmshModelMeshSetSizeCallback(geoGmshSize, NULL, &ierr);       ErrorGmsh(ierr);
     theGeometry.theNodes = NULL;
     theGeometry.theElements = NULL;
     theGeometry.theEdges = NULL;
@@ -48,7 +40,6 @@ void geoFinalize()
         free(theGeometry.theDomains[i]->elem);
         free(theGeometry.theDomains[i]);  }
     free(theGeometry.theDomains);
-    gmshFinalize(&ierr); ErrorGmsh(ierr);
 }
 
 
@@ -57,128 +48,7 @@ void geoSetSizeCallback(double (*geoSize)(double x, double y))
     theGeometry.geoSize = geoSize; }
 
 
-void geoMeshImport() 
-{
-    int ierr;
-    
-    /* Importing nodes */
-    
-    size_t nNode,n,m,*node;
-    double *xyz,*trash;
-    gmshModelMeshGetNodes(&node,&nNode,&xyz,&n,
-                         &trash,&m,-1,-1,0,0,&ierr);          ErrorGmsh(ierr);                         
-    femNodes *theNodes = malloc(sizeof(femNodes));
-    theNodes->nNodes = nNode;
-    theNodes->X = malloc(sizeof(double)*(theNodes->nNodes));
-    theNodes->Y = malloc(sizeof(double)*(theNodes->nNodes));
-    for (int i = 0; i < theNodes->nNodes; i++){
-        theNodes->X[i] = xyz[3*node[i]-3];
-        theNodes->Y[i] = xyz[3*node[i]-2]; }
-    theGeometry.theNodes = theNodes;
-    gmshFree(node);
-    gmshFree(xyz);
-    gmshFree(trash);
-    printf("Geo     : Importing %d nodes \n",theGeometry.theNodes->nNodes);
-       
-    /* Importing elements */
-    /* Pas super joli : a ameliorer pour eviter la triple copie */
-        
-    size_t nElem, *elem;
-    gmshModelMeshGetElementsByType(1,&elem,&nElem,
-                               &node,&nNode,-1,0,1,&ierr);    ErrorGmsh(ierr);
-    femMesh *theEdges = malloc(sizeof(femMesh));
-    theEdges->nLocalNode = 2;
-    theEdges->nodes = theNodes;
-    theEdges->nElem = nElem;  
-    theEdges->elem = malloc(sizeof(int)*2*theEdges->nElem);
-    theEdges->number = malloc(sizeof(int)*theEdges->nElem);
-    for (int i = 0; i < theEdges->nElem; i++){
-        theEdges->number[i] = elem[i]-1; // GMSH starts at 1
-        for (int j = 0; j < theEdges->nLocalNode; j++){
-            theEdges->elem[2*i+j] = node[2*i+j]-1;  
-        }
-    }
-    theGeometry.theEdges = theEdges;
-    int shiftEdges = elem[0];
-    gmshFree(node);
-    gmshFree(elem);
-    printf("Geo     : Importing %d edges \n",theEdges->nElem);
-  
-    gmshModelMeshGetElementsByType(2,&elem,&nElem,
-                               &node,&nNode,-1,0,1,&ierr);    ErrorGmsh(ierr);
-    if (nElem != 0) {
-      femMesh *theElements = malloc(sizeof(femMesh));
-      theElements->nLocalNode = 3;
-      theElements->nodes = theNodes;
-      theElements->nElem = nElem;  
-      theElements->elem = malloc(sizeof(int)*3*theElements->nElem);
-        theElements->number = malloc(sizeof(int)*theElements->nElem);
-      for (int i = 0; i < theElements->nElem; i++){
-        theElements->number[i] = elem[i]-1; // GMSH starts at 1
-        for (int j = 0; j < theElements->nLocalNode; j++){
-            theElements->elem[3*i+j] = node[3*i+j]-1;  
-        }
-      }   
-      theGeometry.theElements = theElements;
-      gmshFree(node);
-      gmshFree(elem);
-      printf("Geo     : Importing %d triangles \n",theElements->nElem); }
-    
-    int nElemTriangles = nElem;
-    gmshModelMeshGetElementsByType(3,&elem,&nElem,
-                               &node,&nNode,-1,0,1,&ierr);    ErrorGmsh(ierr);
-    if (nElem != 0 && nElemTriangles != 0)  
-      Error("Cannot consider hybrid geometry with triangles and quads :-(");                       
-                               
-    if (nElem != 0) {
-      femMesh *theElements = malloc(sizeof(femMesh));
-      theElements->nLocalNode = 4;
-      theElements->nodes = theNodes;
-      theElements->nElem = nElem;  
-      theElements->elem = malloc(sizeof(int)*4*theElements->nElem);
-      for (int i = 0; i < theElements->nElem; i++)
-          for (int j = 0; j < theElements->nLocalNode; j++)
-              theElements->elem[4*i+j] = node[4*i+j]-1;  
-      theGeometry.theElements = theElements;
-      gmshFree(node);
-      gmshFree(elem);
-      printf("Geo     : Importing %d quads \n",theElements->nElem); }
 
-    
-    /* Importing 1D entities */
-  
-    int *dimTags;
-    gmshModelGetEntities(&dimTags,&n,1,&ierr);        ErrorGmsh(ierr);
-    theGeometry.nDomains = n/2;
-    theGeometry.theDomains = malloc(sizeof(femDomain*)*n/2);
-    printf("Geo     : Importing %d entities \n",theGeometry.nDomains);
-
-    for (int i=0; i < n/2; i++) {
-        int dim = dimTags[2*i+0];
-        int tag = dimTags[2*i+1];
-        femDomain *theDomain = malloc(sizeof(femDomain)); 
-        theGeometry.theDomains[i] = theDomain;
-        theDomain->mesh = theEdges;
-        sprintf(theDomain->name, "Entity %d ",tag-1);
-         
-        int *elementType;
-        size_t nElementType, **elementTags, *nElementTags, nnElementTags, **nodesTags, *nNodesTags, nnNodesTags; 
-        gmshModelMeshGetElements(&elementType, &nElementType, &elementTags, &nElementTags, &nnElementTags, &nodesTags, &nNodesTags, &nnNodesTags, dim, tag, &ierr);
-        theDomain->nElem = nElementTags[0];
-        theDomain->elem = malloc(sizeof(int)*2*theDomain->nElem); 
-        for (int j = 0; j < theDomain->nElem; j++) {
-            theDomain->elem[j] = elementTags[0][j] - shiftEdges; }
-        printf("Geo     : Entity %d : %d elements \n",i,theDomain->nElem);
-        gmshFree(nElementTags);
-        gmshFree(nNodesTags);
-        gmshFree(elementTags);
-        gmshFree(nodesTags);
-        gmshFree(elementType); }
-    gmshFree(dimTags);
- 
-    return;
-
-}
 
 void geoMeshPrint() 
 {
@@ -361,7 +231,6 @@ int geoGetDomain(char *name)
     int theIndex = -1;
     for (int iDomain = 0; iDomain < theGeometry.nDomains; iDomain++) {
         femDomain *theDomain = theGeometry.theDomains[iDomain];
-        printf("Domaine défini [%d]: %s\n", iDomain, theDomain->name);
 
         if (strncasecmp(name, theDomain->name, MAXNAME) == 0) {
             theIndex = iDomain;
@@ -402,42 +271,6 @@ double geoSize(double x, double y){
 
 }
 
-void geoMeshGenerate() {
-    femGeo* theGeometry = geoGetGeometry();
-
-    double x = theGeometry->xCenter;
-    double y = theGeometry->yCenter;
-    
-    double rOuter = theGeometry->rOuter;
- 
-//
-//  -1- Construction de la géométrie avec OpenCascade
-//      On crée le rectangle
-//      On crée les deux cercles
-//      On soustrait les cercles du rectangle :-)
-//
- 
-    int ierr;
-    int idOuter = gmshModelOccAddDisk(x, y, 0.0, rOuter, rOuter, -1, NULL, 0, NULL, 0, &ierr); 
-
-    int outer[] = {2, idOuter};
-    gmshModelOccSynchronize(&ierr);
-
-    if (theGeometry->elementType == FEM_QUAD) {
-        gmshOptionSetNumber("Mesh.SaveAll",1,&ierr);
-        gmshOptionSetNumber("Mesh.RecombineAll",1,&ierr);
-        gmshOptionSetNumber("Mesh.Algorithm",11,&ierr);  
-        gmshOptionSetNumber("Mesh.SmoothRatio", 21.5, &ierr);  
-        gmshOptionSetNumber("Mesh.RecombinationAlgorithm",1.0,&ierr); 
-        gmshModelGeoMeshSetRecombine(2,1,45,&ierr);  
-        gmshModelMeshGenerate(2,&ierr);  }
-  
-    if (theGeometry->elementType == FEM_TRIANGLE) {
-        gmshOptionSetNumber("Mesh.SaveAll",1,&ierr);
-        gmshModelMeshGenerate(2,&ierr);  }
-    
-    return;
-}
 
 static const double _gaussQuad4Xsi[4]    = {-0.577350269189626,-0.577350269189626, 0.577350269189626, 0.577350269189626};
 static const double _gaussQuad4Eta[4]    = { 0.577350269189626,-0.577350269189626,-0.577350269189626, 0.577350269189626};
@@ -869,8 +702,12 @@ void femElasticityPrint(femProblem *theProblem)
           printf("  %20s :",theCondition->domain->name);
           if (theCondition->type==DIRICHLET_X)  printf(" imposing %9.2e as the horizontal displacement  \n",value);
           if (theCondition->type==DIRICHLET_Y)  printf(" imposing %9.2e as the vertical displacement  \n",value); 
+          if (theCondition->type==DIRICHLET_N)  printf(" imposing %9.2e as the normal displacement     \n",value);
+          if (theCondition->type==DIRICHLET_T)  printf(" imposing %9.2e as the tangential displacement \n",value);
           if (theCondition->type==NEUMANN_X)    printf(" imposing %9.2e as the horizontal force density \n",value); 
-          if (theCondition->type==NEUMANN_Y)    printf(" imposing %9.2e as the vertical force density \n",value);}
+          if (theCondition->type==NEUMANN_Y)    printf(" imposing %9.2e as the vertical force density \n",value);
+          if (theCondition->type==NEUMANN_N)    printf(" imposing %9.2e as the normal force density    \n",value);
+          if (theCondition->type==NEUMANN_T)    printf(" imposing %9.2e as the tangential force density  \n",value);}
     printf(" ======================================================================================= \n\n");
 }
 
@@ -1167,15 +1004,7 @@ void femError(char *text, int line, char *file)
     exit(69);                                                 
 }
 
-void femErrorGmsh(int ierr, int line, char *file)                                  
-{ 
-    if (ierr == 0)  return;
-    printf("\n-------------------------------------------------------------------------------- ");
-    printf("\n  Error in %s at line %d : \n  error code returned by gmsh %d\n", file, line, ierr);
-    printf("\n-------------------------------------------------------------------------------- ");
-    gmshFinalize(NULL);                                        
-    exit(69);                                                 
-}
+
 
 void femErrorScan(int test, int line, char *file)                                  
 { 

@@ -133,353 +133,158 @@ void conjugateGradient(double **A, double *b, double *x, int size) {
     free(s);
 }
 
-void femElasticityAssembleElements(femProblem *theProblem)
-{
+void femApplyBoundaryConditions(femProblem *theProblem) {
     femFullSystem *theSystem = theProblem->system;
-    femIntegration *theRule = theProblem->rule;
-    femDiscrete *theSpace = theProblem->space;
-    femGeo *theGeometry = theProblem->geometry;
-    femNodes *theNodes = theGeometry->theNodes;
-    femMesh *theMesh = theGeometry->theElements;
-
-    double x[4], y[4], phi[4], dphidxsi[4], dphideta[4], dphidx[4], dphidy[4];
-    int nLocal = theMesh->nLocalNode;
-    double a = theProblem->A, b = theProblem->B, c = theProblem->C;
-    double rho = theProblem->rho, g = theProblem->g;
+    femMesh *theMesh = theProblem->geometry->theElements;
     double **A = theSystem->A;
     double *B = theSystem->B;
-
-    for (int iElem = 0; iElem < theMesh->nElem; iElem++) {
-        int map[4], mapX[4], mapY[4];
-
-        for (int j = 0; j < nLocal; j++) {
-            map[j] = theMesh->elem[iElem * nLocal + j];
-            mapX[j] = 2 * map[j];
-            mapY[j] = 2 * map[j] + 1;
-            x[j] = theNodes->X[map[j]];
-            y[j] = theNodes->Y[map[j]];
-        }
-
-        for (int iInteg = 0; iInteg < theRule->n; iInteg++) {
-            double xsi = theRule->xsi[iInteg];
-            double eta = theRule->eta[iInteg];
-            double weight = theRule->weight[iInteg];
-
-            femDiscretePhi2(theSpace, xsi, eta, phi);
-            femDiscreteDphi2(theSpace, xsi, eta, dphidxsi, dphideta);
-
-            double dxdxsi = 0.0, dxdeta = 0.0, dydxsi = 0.0, dydeta = 0.0;
-            for (int i = 0; i < theSpace->n; i++) {
-                dxdxsi += x[i] * dphidxsi[i];
-                dxdeta += x[i] * dphideta[i];
-                dydxsi += y[i] * dphidxsi[i];
-                dydeta += y[i] * dphideta[i];
-            }
-
-            double jac = fabs(dxdxsi * dydeta - dxdeta * dydxsi);
-
-            for (int i = 0; i < theSpace->n; i++) {
-                dphidx[i] = (dphidxsi[i] * dydeta - dphideta[i] * dydxsi) / jac;
-                dphidy[i] = (dphideta[i] * dxdxsi - dphidxsi[i] * dxdeta) / jac;
-            }
-
-            double weightedJac = jac * weight;
-
-            for (int i = 0; i < theSpace->n; i++) {
-                for (int j = 0; j < theSpace->n; j++) {
-                    A[mapX[i]][mapX[j]] += (dphidx[i] * a * dphidx[j] + dphidy[i] * c * dphidy[j]) * weightedJac;
-                    A[mapX[i]][mapY[j]] += (dphidx[i] * b * dphidy[j] + dphidy[i] * c * dphidx[j]) * weightedJac;
-                    A[mapY[i]][mapX[j]] += (dphidy[i] * b * dphidx[j] + dphidx[i] * c * dphidy[j]) * weightedJac;
-                    A[mapY[i]][mapY[j]] += (dphidy[i] * a * dphidy[j] + dphidx[i] * c * dphidx[j]) * weightedJac;
-                }
-                B[mapY[i]] -= phi[i] * g * rho * weightedJac;
-            }
-        }
-    }
-}
-
-void femElasticityAssembleNeumann(femProblem *theProblem)
-{
-    femFullSystem *theSystem = theProblem->system;
-    femIntegration *theRule = theProblem->ruleEdge;
-    femDiscrete *theSpace = theProblem->spaceEdge;
-    femGeo *theGeometry = theProblem->geometry;
-    femNodes *theNodes = theGeometry->theNodes;
-    femMesh *theEdges = theGeometry->theEdges;
-
-    double x[2], y[2], phi[2];
-    int nLocal = 2;
-    double *B = theSystem->B;
-
-    for (int iBnd = 0; iBnd < theProblem->nBoundaryConditions; iBnd++) {
-        femBoundaryCondition *theCondition = theProblem->conditions[iBnd];
-        femBoundaryType type = theCondition->type;
-
-        if (type == DIRICHLET_X || type == DIRICHLET_Y) {
-            continue;
-        }
-
-        femDomain *domain = theCondition->domain;
-        double value = theCondition->value;
-        int shift = (type == NEUMANN_X) ? 0 : 1;
-
-        for (int iEdge = 0; iEdge < domain->nElem; iEdge++) {
-            int iElem = domain->elem[iEdge];
-            int map[2], mapU[2];
-
-            for (int j = 0; j < nLocal; j++) {
-                map[j] = theEdges->elem[iElem * nLocal + j];
-                mapU[j] = 2 * map[j] + shift;
-                x[j] = theNodes->X[map[j]];
-                y[j] = theNodes->Y[map[j]];
-            }
-
-            double dx = x[1] - x[0];
-            double dy = y[1] - y[0];
-            double length = sqrt(dx * dx + dy * dy);
-            double jac = length / 2;
-
-            for (int iInteg = 0; iInteg < theRule->n; iInteg++) {
-                double xsi = theRule->xsi[iInteg];
-                double weight = theRule->weight[iInteg];
-
-                femDiscretePhi(theSpace, xsi, phi);
-
-                for (int i = 0; i < theSpace->n; i++) {
-                    B[mapU[i]] += phi[i] * value * jac * weight;
-                }
-            }
-        }
-    }
-}
-
-void femApplyBoundaryConditions(femProblem *theProblem) {
-
-    femFullSystem *theSystem = theProblem->system;
-    femMesh *theMesh         = theProblem->geometry->theElements;
-    double **A  = theSystem->A;
-    double *B   = theSystem->B;
-    int iCase   = theProblem->planarStrainStress;
+    int iCase = theProblem->planarStrainStress;
 
     for (int i = 0; i < theProblem->nBoundaryConditions; i++) {
+        femBoundaryCondition *cnd = theProblem->conditions[i];
+        femMesh *bndMesh = cnd->domain->mesh;
+        double *X = bndMesh->nodes->X, *Y = bndMesh->nodes->Y;
+        int *bndElem = cnd->domain->elem, nElem = cnd->domain->nElem;
 
-        femBoundaryCondition* cnd = theProblem->conditions[i];
-        femMesh * bndMesh = cnd->domain->mesh;
-        femBoundaryType bndType = cnd->type;
-        double * X = bndMesh->nodes->X;
-        double * Y = bndMesh->nodes->Y;
-        int * bndElem = cnd->domain->elem;
-        int nElem = cnd->domain->nElem;
-        int node0, node1;
-
-        // Pour des conditons en normales-tangents
-        if (cnd->type == DIRICHLET_N || cnd->type == DIRICHLET_T ||
-                cnd->type == NEUMANN_N || cnd->type == NEUMANN_T) {
-
-            if (cnd->domain->n_t_malloced == 0) { // si les n et t n'ont pas encore été calculées
-                cnd->domain->n_t_malloced = 1;
-
-                // nbre de noeuds = nbre de segments + 1, et pour chaque noeud, normale et tangent = vecteur de taille 2
-                cnd->domain->normales = calloc(sizeof(double), 2 * (bndMesh->nElem + 1) ); 
-                cnd->domain->tangentes = calloc(sizeof(double),  2 * (bndMesh->nElem + 1) ); 
-                double *normales = cnd->domain->normales;
-                double *tangentes = cnd->domain->tangentes;
-
-                // Calcul des normales et tangentes
-                for (int j = 0; j < nElem; j++){
-                    node0 = bndMesh->elem[2 * bndElem[j]];
-                    node1 = bndMesh->elem[2 * bndElem[j] + 1];
-                    double dx = X[node1] - X[node0];
-                    double dy = Y[node1] - Y[node0];
-
-                    // contributions au noeud gauche
-                    tangentes[2 * j]        += dx;
-                    tangentes[2 * j + 1]    += dy;
-                    normales[2 * j]         += - dy;
-                    normales[2 * j + 1]     += dx;
-
-                    // contributions au noeud droite
-                    tangentes[2 * (j+1)]        += dx;
-                    tangentes[2 * (j+1) + 1]    += dy;
-                    normales[2 * (j+1)]         += - dy;
-                    normales[2 * (j+1) + 1]     += dx;
-                }
-
-                // Normalisation des normales et tangentes :
-                for (int j = 0; j < nElem + 1; j++){
-                    double norm = sqrt( tangentes[2*j]*tangentes[2*j] + tangentes[2*j+1]*tangentes[2*j+1]);
-                    tangentes[2*j] /= norm; tangentes[2*j+1] /= norm;
-                    norm = sqrt( normales[2*j]*normales[2*j] + normales[2*j+1]*normales[2*j+1]);
-                    normales[2*j] /= norm; normales[2*j+1] /= norm;
-                }
-            }
-            
-            if ((cnd->type == DIRICHLET_N || cnd->type == DIRICHLET_T) &&
-                    cnd->domain->n_t_matrix == 0) { // si A et B n'ont pas été adaptés en n - t
-                cnd->domain->n_t_matrix = 1;
-                // Itération sur tous les noeuds du domaine
-                for (int j = 0; j < nElem + 1; j++){
-                    // technique pour récupérer tous les noeuds sur base des éléments
-                    if (j == nElem) {
-                        node0 = bndMesh->elem[2 * bndElem[j-1] + 1];
-                    }
-                    else {node0 = bndMesh->elem[2 * bndElem[j]];}
-
-                    // Combinaison linéaire des lignes et colonnes de la matrice pour changer (U, V) en (N, T) (voir rapport)
-                    double A_U, A_V, B_U, B_V, nx, ny, tx, ty;
-                    double *normales    = cnd->domain->normales;
-                    double *tangentes   = cnd->domain->tangentes;
-                    nx = normales[2 * j];   ny = normales[2 * j+1];
-                    tx = tangentes[2 * j];  ty = tangentes[2 * j+1];
-
-                    node0 = theMesh->number[node0]; // renumérotation
-                    node1 = theMesh->number[node1];
-                    // Modification de B
-                    B_U = B[2*node0];   B_V = B[2*node0+1];
-                    B[2*node0]      = nx * B_U + ny * B_V;
-                    B[2*node0 + 1]  = tx * B_U + ty * B_V;
-                    // Modification des lignes de A
-                    for (int k = 0; k < theSystem->size; k++) {
-                        A_U = A[2*node0][k];    A_V = A[2*node0+1][k];
-                        A[2*node0][k]   = nx *A_U + ny * A_V;
-                        A[2*node0+1][k] = tx *A_U + ty * A_V;
-                    }
-                    // Modification des colonnes de A
-                    for (int k = 0; k < theSystem->size; k++) {
-                        A_U = A[k][2*node0];    A_V = A[k][2*node0+1];
-                        A[k][2*node0]   = nx *A_U + ny * A_V;
-                        A[k][2*node0+1] = tx *A_U + ty * A_V;
-                    }
-                }
-            }
-                   
-        }
-
-        // Application des différentes conditions
-        if (cnd->type == DIRICHLET_N || cnd->type == DIRICHLET_T) {
-          
-            for (int j = 0; j < nElem + 1; j++){
-                if (j == nElem) {
-                    node0 = bndMesh->elem[2 * bndElem[j-1] + 1];
-                }
-                else {node0 = bndMesh->elem[2 * bndElem[j]];}       
-                int shift = (cnd->type == DIRICHLET_N) ? 0 : 1;
-                femFullSystemConstrain(theSystem, 2 * node0 + shift,  cnd->value);
-            }
-        }
-
-        if (cnd->type == NEUMANN_X || cnd->type == NEUMANN_Y ||
+        if (cnd->type == DIRICHLET_N || cnd->type == DIRICHLET_T || 
             cnd->type == NEUMANN_N || cnd->type == NEUMANN_T) {
+
+            if (!cnd->domain->n_t_malloced) {
+                cnd->domain->n_t_malloced = 1;
+                cnd->domain->normales = calloc(2 * (bndMesh->nElem + 1), sizeof(double));
+                cnd->domain->tangentes = calloc(2 * (bndMesh->nElem + 1), sizeof(double));
+                double *normales = cnd->domain->normales, *tangentes = cnd->domain->tangentes;
+
+                for (int j = 0; j < nElem; j++) {
+                    int node0 = bndMesh->elem[2 * bndElem[j]];
+                    int node1 = bndMesh->elem[2 * bndElem[j] + 1];
+                    double dx = X[node1] - X[node0], dy = Y[node1] - Y[node0];
+
+                    tangentes[2 * j] += dx; tangentes[2 * j + 1] += dy;
+                    normales[2 * j] -= dy; normales[2 * j + 1] += dx;
+                    tangentes[2 * (j + 1)] += dx; tangentes[2 * (j + 1) + 1] += dy;
+                    normales[2 * (j + 1)] -= dy; normales[2 * (j + 1) + 1] += dx;
+                }
+
+                for (int j = 0; j < nElem + 1; j++) {
+                    double tNorm = sqrt(tangentes[2 * j] * tangentes[2 * j] + tangentes[2 * j + 1] * tangentes[2 * j + 1]);
+                    double nNorm = sqrt(normales[2 * j] * normales[2 * j] + normales[2 * j + 1] * normales[2 * j + 1]);
+                    tangentes[2 * j] /= tNorm; tangentes[2 * j + 1] /= tNorm;
+                    normales[2 * j] /= nNorm; normales[2 * j + 1] /= nNorm;
+                }
+            }
+
+            if ((cnd->type == DIRICHLET_N || cnd->type == DIRICHLET_T) && !cnd->domain->n_t_matrix) {
+                cnd->domain->n_t_matrix = 1;
+                double *normales = cnd->domain->normales, *tangentes = cnd->domain->tangentes;
+
+                for (int j = 0; j < nElem + 1; j++) {
+                    int node0 = (j == nElem) ? bndMesh->elem[2 * bndElem[j - 1] + 1] : bndMesh->elem[2 * bndElem[j]];
+                    node0 = theMesh->number[node0];
+                    double nx = normales[2 * j], ny = normales[2 * j + 1];
+                    double tx = tangentes[2 * j], ty = tangentes[2 * j + 1];
+
+                    double B_U = B[2 * node0], B_V = B[2 * node0 + 1];
+                    B[2 * node0] = nx * B_U + ny * B_V;
+                    B[2 * node0 + 1] = tx * B_U + ty * B_V;
+
+                    for (int k = 0; k < theSystem->size; k++) {
+                        double A_U = A[2 * node0][k], A_V = A[2 * node0 + 1][k];
+                        A[2 * node0][k] = nx * A_U + ny * A_V;
+                        A[2 * node0 + 1][k] = tx * A_U + ty * A_V;
+
+                        A_U = A[k][2 * node0]; A_V = A[k][2 * node0 + 1];
+                        A[k][2 * node0] = nx * A_U + ny * A_V;
+                        A[k][2 * node0 + 1] = tx * A_U + ty * A_V;
+                    }
+                }
+            }
+        }
+
+        if (cnd->type == DIRICHLET_N || cnd->type == DIRICHLET_T) {
+            for (int j = 0; j < nElem + 1; j++) {
+                int node0 = (j == nElem) ? bndMesh->elem[2 * bndElem[j - 1] + 1] : bndMesh->elem[2 * bndElem[j]];
+                int shift = (cnd->type == DIRICHLET_N) ? 0 : 1;
+                femFullSystemConstrain(theSystem, 2 * node0 + shift, cnd->value);
+            }
+        }
+
+        if (cnd->type == NEUMANN_X || cnd->type == NEUMANN_Y || cnd->type == NEUMANN_N || cnd->type == NEUMANN_T) {
             for (int j = 0; j < nElem; j++) {
-                node0 = bndMesh->elem[2 * bndElem[j]];
-                node1 = bndMesh->elem[2 * bndElem[j] + 1];                
-                double jac = 0.5 * sqrt( (X[node0] - X[node1]) *  (X[node0] - X[node1]) +
-                                    (Y[node0] - Y[node1]) * (Y[node0] - Y[node1]));
+                int node0 = bndMesh->elem[2 * bndElem[j]], node1 = bndMesh->elem[2 * bndElem[j] + 1];
+                double jac = 0.5 * sqrt((X[node0] - X[node1]) * (X[node0] - X[node1]) + (Y[node0] - Y[node1]) * (Y[node0] - Y[node1]));
 
                 if (cnd->type == NEUMANN_X || cnd->type == NEUMANN_Y) {
-                    if (iCase == AXISYM) { // Prise en compte du cas axisymétrique
-                        
-                        // ce sont les deux valeurs prises par les fcts de formes, mais pas les fcts de formes
-                        double phi[2] = { (1+sqrt(3))/2, (1-sqrt(3))/2}; 
-                        double x[2] = {X[node0], X[node1]};
-                        double xLoc[2] = {x[0] * phi[1] + x[1] * phi[0], x[0] * phi[0] + x[1] * phi[1]};
-
-                        int shift = (cnd->type == NEUMANN_X ) ? 0 : 1;    
-                        node0 = theMesh->number[node0]; // renumérotation
-                        node1 = theMesh->number[node1];       
-                        B[2 * node0 + shift] += jac * cnd->value * phi[1] * xLoc[0] ; // premier point d'intégration
-                        B[2 * node0 + shift] += jac * cnd->value * phi[0] * xLoc[1] ; // deuxième point d'intégration
-
-                        B[2 * node1 + shift] += jac * cnd->value * phi[0] * xLoc[0] ; // premier point d'intégration
-                        B[2 * node1 + shift] += jac * cnd->value * phi[1] * xLoc[1] ; // deuxième point d'intégration                                                                             
-                    }
-
-                    else {
-                        node0 = theMesh->number[node0]; // renumérotation
-                        node1 = theMesh->number[node1];
-                        int shift = (cnd->type == NEUMANN_X ) ? 0 : 1;
-                        B[2 * node0 + shift] += jac * cnd->value;
-                        B[2 * node1 + shift] += jac * cnd->value;                      
-                    }
-
-                }
-                else if (cnd->type == NEUMANN_N || cnd->type == NEUMANN_T){ // NEUMANN_N ou NEUMANN_T
-                    double *n_or_t = (cnd->type == NEUMANN_N) ? cnd->domain->normales : cnd->domain->tangentes;
-                    // l'index du noeud gauche dans n_or_t = index de l'élement
-                    // l'index du noeud gauche dans n_or_t = index de l'élement + 1
-                    node0 = theMesh->number[node0]; // renumérotation
+                    int shift = (cnd->type == NEUMANN_X) ? 0 : 1;
+                    node0 = theMesh->number[node0];
                     node1 = theMesh->number[node1];
-                    B[2 * node0]        += jac * cnd->value *     n_or_t[2 * j];
-                    B[2 * node0 + 1]    += jac * cnd->value *     n_or_t[2 * j + 1];
-                    B[2 * node1]        += jac * cnd->value *     n_or_t[2 * (j+1)];
-                    B[2 * node1 + 1]    += jac * cnd->value *     n_or_t[2*(j+1) + 1] ;
+                    B[2 * node0 + shift] += jac * cnd->value;
+                    B[2 * node1 + shift] += jac * cnd->value;
+                } else {
+                    double *n_or_t = (cnd->type == NEUMANN_N) ? cnd->domain->normales : cnd->domain->tangentes;
+                    node0 = theMesh->number[node0];
+                    node1 = theMesh->number[node1];
+                    B[2 * node0] += jac * cnd->value * n_or_t[2 * j];
+                    B[2 * node0 + 1] += jac * cnd->value * n_or_t[2 * j + 1];
+                    B[2 * node1] += jac * cnd->value * n_or_t[2 * (j + 1)];
+                    B[2 * node1 + 1] += jac * cnd->value * n_or_t[2 * (j + 1) + 1];
                 }
-
             }
         }
-    }  
+    }
 
-    // Conditions DIRICHLET X-Y
-    int *theConstrainedNodes = theProblem->constrainedNodes; // NB : ici nodes ne correspond pas à un noeud, mais à la composante x ou y
-    for (int i=0; i < theSystem->size; i++) {
+    int *theConstrainedNodes = theProblem->constrainedNodes;
+    for (int i = 0; i < theSystem->size; i++) {
         if (theConstrainedNodes[i] != -1) {
             double value = theProblem->conditions[theConstrainedNodes[i]]->value;
             femBoundaryType cndType = theProblem->conditions[theConstrainedNodes[i]]->type;
-            if (cndType == DIRICHLET_X || cndType == DIRICHLET_Y) {
-                int shift = (cndType ==DIRICHLET_X) ? 0 : 1;
-                int node = (i - shift) / 2;
-                int index = theMesh->number[node] * 2 + shift;  // renumérotation
-                femFullSystemConstrain(theSystem, index,value); }
-            }
+            int shift = (cndType == DIRICHLET_X) ? 0 : 1;
+            int node = (i - shift) / 2;
+            int index = theMesh->number[node] * 2 + shift;
+            femFullSystemConstrain(theSystem, index, value);
         }
-
+    }
 }
 
-void femEquationsN_Tto_U_V(femProblem *theProblem, double *sol) {
+void femDomChange(femProblem *theProblem, double *sol) {
     femFullSystem *theSystem = theProblem->system;
-    femMesh *theMesh         = theProblem->geometry->theElements;
-    double **A  = theSystem->A;
-    double *B   = sol;
-    
+    femMesh *theMesh = theProblem->geometry->theElements;
+    double *B = sol;
+
     for (int i = 0; i < theProblem->nBoundaryConditions; i++) {
-    femBoundaryCondition* cnd = theProblem->conditions[i] ;
-        if ( (cnd->type == DIRICHLET_N || cnd->type == DIRICHLET_T) &&
-                (cnd->domain->n_t_matrix == 1) ) { // si on a pas encore converti de N-T en U-V
+        femBoundaryCondition *cnd = theProblem->conditions[i];
+        if ((cnd->type == DIRICHLET_N || cnd->type == DIRICHLET_T) && cnd->domain->n_t_matrix == 1) {
             cnd->domain->n_t_malloced = 0;
-            int nElem = cnd->domain->nElem;
-            femMesh * bndMesh = cnd->domain->mesh;
-            int * bndElem = cnd->domain->elem;
-            int node0, nx, ny, tx, ty;
-            double *normales = cnd->domain->normales;
-            double *tangentes = cnd->domain->tangentes;
+            femMesh *bndMesh = cnd->domain->mesh;
+            int *bndElem = cnd->domain->elem;
+            double *normales = cnd->domain->normales, *tangentes = cnd->domain->tangentes;
 
-            for (int j = 0; j < nElem + 1; j++){
-                if (j == nElem) {
-                    node0 = bndMesh->elem[2 * bndElem[j-1] + 1];
-                }
-                else {node0 = bndMesh->elem[2 * bndElem[j]];}
+            for (int j = 0; j <= cnd->domain->nElem; j++) {
+                int node0 = (j == cnd->domain->nElem) 
+                            ? bndMesh->elem[2 * bndElem[j - 1] + 1] 
+                            : bndMesh->elem[2 * bndElem[j]];
+                node0 = theMesh->number[node0];
 
-                nx = normales[2 * j];   ny = normales[2 * j+1];          
-                tx = tangentes[2 * j];  ty = tangentes[2 * j+1];
+                double nx = normales[2 * j], ny = normales[2 * j + 1];
+                double tx = tangentes[2 * j], ty = tangentes[2 * j + 1];
+                double B_U = B[2 * node0], B_V = B[2 * node0 + 1];
 
-                node0 = theMesh->number[node0]; // renumérotation
-                double B_U = B[2*node0];    double B_V = B[2*node0+1];
-                B[2*node0]      = nx * B_U + ny * B_V;
-                B[2*node0 + 1]  = tx * B_U + ty * B_V;
+                B[2 * node0] = nx * B_U + ny * B_V;
+                B[2 * node0 + 1] = tx * B_U + ty * B_V;
             }
         }
     }
 }
 
-void femFreeN_T(femProblem *theProblem) {
-    // free tan - norm
+void femFreeNT(femProblem *theProblem) {
     for (int i = 0; i < theProblem->nBoundaryConditions; i++) {
-        femBoundaryCondition* cnd = theProblem->conditions[i] ;
-            if (cnd->domain->n_t_malloced == 1) {
-                free(cnd->domain->normales);
-                free(cnd->domain->tangentes);
-            }
+        femBoundaryCondition *cnd = theProblem->conditions[i];
+        if (cnd->domain->n_t_malloced) {
+            free(cnd->domain->normales);
+            free(cnd->domain->tangentes);
+            cnd->domain->n_t_malloced = 0; // Reset flag after freeing
         }
+    }
 }
 
 double* femBandSystemEliminate(femBandSystem* mySystem)
@@ -574,50 +379,45 @@ double *femElasticitySolve(femProblem *theProblem)
 
     for (int iElem = 0; iElem < theMesh->nElem; iElem++) {
         for (int j = 0; j < nLocal; j++) {
-            map[j] = theMesh->elem[iElem * nLocal + j];
+            map[j] = theMesh->number[theMesh->elem[iElem * nLocal + j]];
             x[j] = theNodes->X[map[j]];
             y[j] = theNodes->Y[map[j]];
-            map[j] = theMesh->number[map[j]];  
             mapX[j] = 2 * map[j];
             mapY[j] = 2 * map[j] + 1;
         }
 
         for (int iInteg = 0; iInteg < theRule->n; iInteg++) {
-            double xsi = theRule->xsi[iInteg];
-            double eta = theRule->eta[iInteg];
-            double weight = theRule->weight[iInteg];
-
+            double xsi = theRule->xsi[iInteg], eta = theRule->eta[iInteg], weight = theRule->weight[iInteg];
             femDiscretePhi2(theSpace, xsi, eta, phi);
             femDiscreteDphi2(theSpace, xsi, eta, dphidxsi, dphideta);
 
-            double dxdxsi = 0.0, dxdeta = 0.0, dydxsi = 0.0, dydeta = 0.0, xLoc = 0.0;
+            double dxdxsi = 0.0, dxdeta = 0.0, dydxsi = 0.0, dydeta = 0.0;
             for (int i = 0; i < theSpace->n; i++) {
-                xLoc += x[i] * phi[i];
                 dxdxsi += x[i] * dphidxsi[i];
                 dxdeta += x[i] * dphideta[i];
                 dydxsi += y[i] * dphidxsi[i];
                 dydeta += y[i] * dphideta[i];
             }
             double jac = fabs(dxdxsi * dydeta - dxdeta * dydxsi);
-
-            for (int i = 0; i < theSpace->n; i++) {
-                dphidx[i] = (dphidxsi[i] * dydeta - dphideta[i] * dydxsi) / jac;
-                dphidy[i] = (dphideta[i] * dxdxsi - dphidxsi[i] * dxdeta) / jac;
-            }
-
             if (jac <= 0) {
                 printf("Error: Jacobian is non-positive for element %d.\n", iElem);
                 return NULL;
             }
 
             for (int i = 0; i < theSpace->n; i++) {
+                dphidx[i] = (dphidxsi[i] * dydeta - dphideta[i] * dydxsi) / jac;
+                dphidy[i] = (dphideta[i] * dxdxsi - dphidxsi[i] * dxdeta) / jac;
+            }
+
+            double weightedJac = jac * weight;
+            for (int i = 0; i < theSpace->n; i++) {
                 for (int j = 0; j < theSpace->n; j++) {
-                    A[mapX[i]][mapX[j]] += (dphidx[i] * a * dphidx[j] + dphidy[i] * c * dphidy[j]) * jac * weight;
-                    A[mapX[i]][mapY[j]] += (dphidx[i] * b * dphidy[j] + dphidy[i] * c * dphidx[j]) * jac * weight;
-                    A[mapY[i]][mapX[j]] += (dphidy[i] * b * dphidx[j] + dphidx[i] * c * dphidy[j]) * jac * weight;
-                    A[mapY[i]][mapY[j]] += (dphidy[i] * a * dphidy[j] + dphidx[i] * c * dphidx[j]) * jac * weight;
+                    A[mapX[i]][mapX[j]] += (dphidx[i] * a * dphidx[j] + dphidy[i] * c * dphidy[j]) * weightedJac;
+                    A[mapX[i]][mapY[j]] += (dphidx[i] * b * dphidy[j] + dphidy[i] * c * dphidx[j]) * weightedJac;
+                    A[mapY[i]][mapX[j]] += (dphidy[i] * b * dphidx[j] + dphidx[i] * c * dphidy[j]) * weightedJac;
+                    A[mapY[i]][mapY[j]] += (dphidy[i] * a * dphidy[j] + dphidx[i] * c * dphidx[j]) * weightedJac;
                 }
-                B[mapY[i]] -= phi[i] * g * rho * jac * weight;
+                B[mapY[i]] -= phi[i] * g * rho * weightedJac;
             }
         }
     }
@@ -626,21 +426,18 @@ double *femElasticitySolve(femProblem *theProblem)
 
     double *sol = malloc(sizeof(double) * theSystem->size);
     if (theProblem->solver == SOLVEUR_PLEIN) {
-        B = femFullSystemEliminate(theSystem);
-        memcpy(sol, B, sizeof(double) * theSystem->size);
+        memcpy(sol, femFullSystemEliminate(theSystem), sizeof(double) * theSystem->size);
     } else if (theProblem->solver == SOLVEUR_BANDE) {
         myBand = myBand * 2 + 1;
         femBandSystem *theBandSystem = femBandSystemCreate(theSystem->size, myBand);
         for (int i = 0; i < theSystem->size; i++) {
-            int jmin = fmax(0, i - myBand / 2);
-            int jmax = fmin(theSystem->size, i + myBand / 2 + 1);
+            int jmin = fmax(0, i - myBand / 2), jmax = fmin(theSystem->size, i + myBand / 2 + 1);
             for (int j = jmin; j < jmax; j++) {
                 theBandSystem->A[i][j] = A[i][j];
             }
             theBandSystem->B[i] = B[i];
         }
-        theBandSystem->B = femBandSystemEliminate(theBandSystem);
-        memcpy(sol, theBandSystem->B, sizeof(double) * theSystem->size);
+        memcpy(sol, femBandSystemEliminate(theBandSystem), sizeof(double) * theSystem->size);
         free(theBandSystem->A);
         free(theBandSystem->B);
         free(theBandSystem);
@@ -648,8 +445,8 @@ double *femElasticitySolve(femProblem *theProblem)
         conjugateGradient(A, B, sol, theSystem->size);
     }
 
-    femEquationsN_Tto_U_V(theProblem, sol);
-    femFreeN_T(theProblem);
+    femDomChange(theProblem, sol);
+    femFreeNT(theProblem);
 
     for (int i = 0; i < theMesh->nodes->nNodes; i++) {
         B[2 * i] = sol[2 * theMesh->number[i]];
@@ -666,19 +463,15 @@ double *femElasticityForces(femProblem *theProblem)
     double *solution = theProblem->soluce;
     double *residuals = theProblem->residuals;
 
-    A_copy = malloc(systemSize * sizeof(double *));
-    B_copy = malloc(systemSize * sizeof(double));
+    // Allocate and initialize A_copy and B_copy
+    double **A_copy = malloc(systemSize * sizeof(double *));
+    double *B_copy = malloc(systemSize * sizeof(double));
     if (A_copy == NULL || B_copy == NULL) {
         Error("Memory allocation failed for A_copy or B_copy");
     }
 
-    memcpy(B_copy, theProblem->system->B, sizeof(double) * systemSize);
     for (int i = 0; i < systemSize; i++) {
-        B_copy[i] = -B_copy[i];
-    }
-
-    memcpy(A_copy, theProblem->system->A, sizeof(double *) * systemSize);
-    for (int i = 0; i < systemSize; i++) {
+        B_copy[i] = -theProblem->system->B[i];
         A_copy[i] = malloc(systemSize * sizeof(double));
         if (A_copy[i] == NULL) {
             Error("Memory allocation failed for A_copy row");
@@ -688,6 +481,7 @@ double *femElasticityForces(femProblem *theProblem)
         }
     }
 
+    // Allocate residuals if not already allocated
     if (residuals == NULL) {
         residuals = malloc(systemSize * sizeof(double));
         if (residuals == NULL) {
@@ -696,14 +490,15 @@ double *femElasticityForces(femProblem *theProblem)
         theProblem->residuals = residuals;
     }
 
+    // Compute residuals
     for (int i = 0; i < systemSize; i++) {
-        residuals[i] = 0.0;
+        residuals[i] = -B_copy[i];
         for (int j = 0; j < systemSize; j++) {
             residuals[i] += A_copy[i][j] * solution[j];
         }
-        residuals[i] -= B_copy[i];
     }
 
+    // Free allocated memory
     for (int i = 0; i < systemSize; i++) {
         free(A_copy[i]);
     }

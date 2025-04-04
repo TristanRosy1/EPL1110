@@ -14,7 +14,6 @@
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
-#include "gmshc.h"
 
 
 #define ErrorScan(a)   femErrorScan(a,__LINE__,__FILE__)
@@ -58,10 +57,10 @@ typedef struct {
     int nElem;
     int *elem;
     char name[MAXNAME];
-    double *tangentes;  // utilisés pour les conditions normales et tangentes
+    double *tangentes;  
     double *normales;
-    int n_t_malloced;   // Utilisé pour voir si normales et tangents ont déjà été calculées sur ce domaine !
-    int n_t_matrix;     //utilisé pour voir si la matrice a été adaptée, ds le cas de conditions DIRICHLET N-T
+    int n_t_malloced;   
+    int n_t_matrix;     
 } femDomain;
 
 typedef struct {
@@ -134,8 +133,6 @@ femGeo*             geoGetGeometry();
 double              geoSize(double x, double y);
 double              geoSizeDefault(double x, double y);
 void                geoSetSizeCallback(double (*geoSize)(double x, double y));
-void                geoMeshGenerate();
-void                geoMeshImport();
 void                geoMeshPrint();
 void                geoMeshWrite(const char *filename);
 void                geoMeshRead(const char *filename);
@@ -181,7 +178,6 @@ double              femMin(double *x, int n);
 double              femMax(double *x, int n);
 void                femError(char *text, int line, char *file);
 void                femErrorScan(int test, int line, char *file);
-void                femErrorGmsh(int test, int line, char *file);
 void                femWarning(char *text, int line, char *file);
 void                femPrintSolver(femSolverType solver, femRenumType renumType);
 void                femElasticityDebugPrint(femProblem *theProblem);
